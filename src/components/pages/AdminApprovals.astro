@@ -1,0 +1,172 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getLocaleFromUrl, useTranslations } from '../../i18n/utils';
+import type { Profile } from '../../lib/database.types';
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+
+const { supabase, profile } = Astro.locals;
+
+let error: string | null = null;
+
+// The middleware has already refused non-admins, and the RLS policy
+// `profiles_update_admin` refuses them again at the database. This handler is
+// the third layer, not the only one.
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const targetId = String(form.get('user_id') ?? '');
+  const action = String(form.get('action') ?? '');
+
+  const patch: Partial<Pick<Profile, 'status' | 'role'>> | null =
+    action === 'approve'
+      ? { status: 'approved' }
+      : action === 'reject'
+        ? { status: 'rejected' }
+        : action === 'make_admin'
+          ? { role: 'admin' }
+          : action === 'revoke'
+            ? { status: 'rejected', role: 'teacher' }
+            : null;
+
+  if (!targetId || !patch) {
+    error = 'Unrecognised action.';
+  } else if (targetId === profile!.id) {
+    // Removing your own admin rights could leave the hub with no administrator.
+    error = 'You cannot change your own access from this screen.';
+  } else {
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update(patch)
+      .eq('id', targetId);
+    if (updateError) error = updateError.message;
+    else return Astro.redirect(Astro.url.pathname);
+  }
+}
+
+const { data: pending } = await supabase
+  .from('profiles')
+  .select('*')
+  .eq('status', 'pending')
+  .order('created_at', { ascending: true });
+
+const { data: approved } = await supabase
+  .from('profiles')
+  .select('*')
+  .eq('status', 'approved')
+  .order('full_name', { ascending: true });
+
+const pendingList = (pending ?? []) as Profile[];
+const approvedList = (approved ?? []) as Profile[];
+---
+
+<Layout title={t('admin.title')}>
+  <h1 class="text-3xl font-bold text-navy">{t('admin.title')}</h1>
+  <p class="mt-2 max-w-2xl leading-relaxed text-ink-muted">{t('admin.intro')}</p>
+
+  {
+    error && (
+      <p class="mt-6 rounded-lg border border-magenta bg-magenta-tint px-4 py-3 text-sm text-navy">
+        {error}
+      </p>
+    )
+  }
+
+  <section class="mt-10">
+    <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+      {t('admin.pending')}
+      {pendingList.length > 0 && <span class="chip tone-amber ml-2">{pendingList.length}</span>}
+    </h2>
+
+    {
+      pendingList.length > 0 ? (
+        <ul class="mt-4 divide-y divide-line rounded-card border border-line">
+          {pendingList.map((p) => (
+            <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div class="min-w-0">
+                <p class="truncate font-medium text-navy">{p.full_name ?? '—'}</p>
+                <p class="truncate text-xs text-ink-muted">{p.email}</p>
+              </div>
+              <div class="flex gap-2">
+                <form method="POST">
+                  <input type="hidden" name="user_id" value={p.id} />
+                  <input type="hidden" name="action" value="approve" />
+                  <button
+                    type="submit"
+                    class="rounded-md bg-navy px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-navy-soft"
+                  >
+                    {t('admin.approve')}
+                  </button>
+                </form>
+                <form method="POST">
+                  <input type="hidden" name="user_id" value={p.id} />
+                  <input type="hidden" name="action" value="reject" />
+                  <button
+                    type="submit"
+                    class="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-surface-sunken hover:text-navy"
+                  >
+                    {t('admin.reject')}
+                  </button>
+                </form>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="mt-4 rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
+          {t('admin.none')}
+        </p>
+      )
+    }
+  </section>
+
+  <section class="mt-12">
+    <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+      {t('admin.approved')}
+      <span class="chip tone-green ml-2">{approvedList.length}</span>
+    </h2>
+
+    <ul class="mt-4 divide-y divide-line rounded-card border border-line">
+      {
+        approvedList.map((p) => (
+          <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div class="min-w-0">
+              <p class="truncate font-medium text-navy">
+                {p.full_name ?? '—'}
+                {p.role === 'admin' && <span class="chip tone-purple ml-2">admin</span>}
+              </p>
+              <p class="truncate text-xs text-ink-muted">{p.email}</p>
+            </div>
+
+            {p.id !== profile!.id && (
+              <div class="flex gap-2">
+                {p.role !== 'admin' && (
+                  <form method="POST">
+                    <input type="hidden" name="user_id" value={p.id} />
+                    <input type="hidden" name="action" value="make_admin" />
+                    <button
+                      type="submit"
+                      class="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-navy transition hover:bg-surface-sunken"
+                    >
+                      {t('admin.makeAdmin')}
+                    </button>
+                  </form>
+                )}
+                <form method="POST">
+                  <input type="hidden" name="user_id" value={p.id} />
+                  <input type="hidden" name="action" value="revoke" />
+                  <button
+                    type="submit"
+                    class="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-surface-sunken hover:text-navy"
+                  >
+                    {t('admin.revoke')}
+                  </button>
+                </form>
+              </div>
+            )}
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+</Layout>

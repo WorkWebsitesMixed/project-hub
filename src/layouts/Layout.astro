@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import AccountMenu from '../components/AccountMenu.astro';
 import { getLocaleFromUrl, useTranslations, localizePath } from '../i18n/utils';
 import { LOCALE_NAMES, LOCALES } from '../i18n/ui';
 
@@ -21,11 +22,17 @@ const pathWithoutLocale = Astro.url.pathname.replace(
   '',
 );
 
-const navLinks = [
-  { href: '/projects', label: t('nav.browse') },
-  { href: '/projects/new', label: t('nav.new') },
-  { href: '/dashboard', label: t('nav.dashboard') },
-];
+// The hub's navigation only means anything to an approved teacher; everyone
+// else sees the sign-in button and nothing to click into.
+const isApproved = Astro.locals.profile?.status === 'approved';
+
+const navLinks = isApproved
+  ? [
+      { href: '/projects', label: t('nav.browse') },
+      { href: '/projects/new', label: t('nav.new') },
+      { href: '/dashboard', label: t('nav.dashboard') },
+    ]
+  : [];
 ---
 
 <html lang={locale}>
@@ -91,7 +98,7 @@ const navLinks = [
             }
           </nav>
 
-          <slot name="account" />
+          <AccountMenu />
         </div>
       </div>
     </header>

@@ -1,0 +1,52 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getLocaleFromUrl, useTranslations, localizePath } from '../../i18n/utils';
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+
+const reason = Astro.url.searchParams.get('reason');
+const detail = Astro.url.searchParams.get('detail');
+
+const isDomainProblem = reason === 'domain';
+---
+
+<Layout title={t('auth.errorTitle')}>
+  <section class="mx-auto max-w-xl py-12 text-center">
+    <div
+      class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-magenta-tint text-2xl"
+      aria-hidden="true"
+    >
+      ✕
+    </div>
+
+    <h1 class="mt-6 text-2xl font-bold text-navy">{t('auth.errorTitle')}</h1>
+
+    <p class="mt-3 leading-relaxed text-ink-muted">
+      {isDomainProblem ? t('auth.errorDomain') : t('auth.errorGeneric')}
+    </p>
+
+    {
+      detail && !isDomainProblem && (
+        <p class="mt-4 rounded-lg bg-surface-sunken px-3 py-2 text-left font-mono text-xs text-ink-muted">
+          {detail}
+        </p>
+      )
+    }
+
+    <div class="mt-8 flex justify-center gap-3">
+      <a
+        href="/auth/signin"
+        class="rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+      >
+        {t('auth.tryAgain')}
+      </a>
+      <a
+        href={localizePath('/', locale)}
+        class="rounded-lg border border-line px-5 py-2.5 text-sm font-semibold text-navy transition hover:bg-surface-sunken"
+      >
+        {t('auth.backHome')}
+      </a>
+    </div>
+  </section>
+</Layout>

@@ -5,6 +5,11 @@ import { GRADES, subjectsForGrade, FAMILIES } from '../lib/subjects';
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
+
+const isApproved = Astro.locals.profile?.status === 'approved';
+// Set by the middleware when someone tries to reach a protected page signed out.
+const signInRequired = Astro.url.searchParams.get('signin') === 'required';
+const nextPath = Astro.url.searchParams.get('next');
 ---
 
 <Layout>
@@ -19,19 +24,40 @@ const t = useTranslations(locale);
       {t('home.heroBody')}
     </p>
 
+    {
+      signInRequired && (
+        <p class="mt-6 rounded-lg border border-amber bg-amber-tint px-4 py-3 text-sm text-navy">
+          Please sign in with your school Google account to continue.
+        </p>
+      )
+    }
+
     <div class="mt-8 flex flex-wrap gap-3">
-      <a
-        href={localizePath('/projects', locale)}
-        class="rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
-      >
-        {t('home.cta')}
-      </a>
-      <a
-        href={localizePath('/projects/new', locale)}
-        class="rounded-lg border border-line px-5 py-2.5 text-sm font-semibold text-navy transition hover:bg-surface-sunken"
-      >
-        {t('home.ctaSecondary')}
-      </a>
+      {
+        isApproved ? (
+          <>
+            <a
+              href={localizePath('/projects', locale)}
+              class="rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+            >
+              {t('home.cta')}
+            </a>
+            <a
+              href={localizePath('/projects/new', locale)}
+              class="rounded-lg border border-line px-5 py-2.5 text-sm font-semibold text-navy transition hover:bg-surface-sunken"
+            >
+              {t('home.ctaSecondary')}
+            </a>
+          </>
+        ) : (
+          <a
+            href={`/auth/signin${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ''}`}
+            class="rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+          >
+            {t('nav.signIn')}
+          </a>
+        )
+      }
     </div>
   </section>
 

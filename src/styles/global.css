@@ -87,6 +87,17 @@
     --family-tint: var(--color-amber-tint);
   }
 
+  /*
+   * Standalone accent tones, for chips that are not subjects — a "waiting"
+   * count, an "admin" badge. Same fill-not-type rule as everything else.
+   */
+  .tone-magenta { --family: var(--color-magenta); --family-tint: var(--color-magenta-tint); }
+  .tone-purple  { --family: var(--color-purple);  --family-tint: var(--color-purple-tint); }
+  .tone-cyan    { --family: var(--color-cyan);    --family-tint: var(--color-cyan-tint); }
+  .tone-orange  { --family: var(--color-orange);  --family-tint: var(--color-orange-tint); }
+  .tone-green   { --family: var(--color-green);   --family-tint: var(--color-green-tint); }
+  .tone-amber   { --family: var(--color-amber);   --family-tint: var(--color-amber-tint); }
+
   /* A subject tag. Navy text on a pale family wash, with a saturated edge. */
   .chip {
     display: inline-flex;

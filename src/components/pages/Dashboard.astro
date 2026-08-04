@@ -1,0 +1,139 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getLocaleFromUrl, useTranslations, localizePath } from '../../i18n/utils';
+import { STATUS_LABELS } from '../../lib/subjects';
+import type { ProjectStatus } from '../../lib/subjects';
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+
+const { supabase, profile } = Astro.locals;
+
+// RLS already limits what comes back, so these queries stay simple: ask for
+// what this teacher owns, and let the database decide what they may see.
+const [{ data: myProjects }, { data: interestReceived }, { data: interestSent }] =
+  await Promise.all([
+    supabase
+      .from('projects')
+      .select('id, title, status, updated_at')
+      .eq('owner_id', profile!.id)
+      .order('updated_at', { ascending: false }),
+
+    // Requests on projects this teacher can edit. The policy
+    // `collab_select_project_side` is what scopes this to their own projects.
+    supabase
+      .from('collaboration_requests')
+      .select('id, message, status, created_at, projects(id, title), profiles(full_name, email)')
+      .neq('user_id', profile!.id)
+      .order('created_at', { ascending: false }),
+
+    supabase
+      .from('collaboration_requests')
+      .select('id, status, created_at, projects(id, title)')
+      .eq('user_id', profile!.id)
+      .order('created_at', { ascending: false }),
+  ]);
+
+const statusLabel = (s: ProjectStatus) => STATUS_LABELS[s][locale];
+---
+
+<Layout title={t('dash.title')}>
+  <div class="flex flex-wrap items-baseline justify-between gap-4">
+    <h1 class="text-3xl font-bold text-navy">{t('dash.title')}</h1>
+    <a
+      href={localizePath('/projects/new', locale)}
+      class="rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-navy-soft"
+    >
+      {t('nav.new')}
+    </a>
+  </div>
+
+  <div class="mt-10 grid gap-8 lg:grid-cols-3">
+    <section class="lg:col-span-2">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+        {t('dash.myProjects')}
+      </h2>
+
+      {
+        myProjects && myProjects.length > 0 ? (
+          <ul class="mt-4 divide-y divide-line rounded-card border border-line">
+            {myProjects.map((p) => (
+              <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <a
+                  href={localizePath(`/projects/${p.id}`, locale)}
+                  class="font-medium text-navy hover:underline"
+                >
+                  {p.title}
+                </a>
+                <span class="chip">{statusLabel(p.status as ProjectStatus)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="mt-4 rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
+            {t('dash.noProjects')}
+          </p>
+        )
+      }
+    </section>
+
+    <aside class="space-y-8">
+      <section>
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+          {t('dash.interest')}
+        </h2>
+
+        {
+          interestReceived && interestReceived.length > 0 ? (
+            <ul class="mt-4 space-y-3">
+              {interestReceived.map((r: any) => (
+                <li class="rounded-card border border-line px-4 py-3">
+                  <p class="text-sm font-medium text-navy">
+                    {r.profiles?.full_name ?? r.profiles?.email}
+                  </p>
+                  <p class="mt-0.5 text-xs text-ink-muted">{r.projects?.title}</p>
+                  {r.message && (
+                    <p class="mt-2 text-sm leading-relaxed text-ink-muted">
+                      “{r.message}”
+                    </p>
+                  )}
+                  <a
+                    href={`mailto:${r.profiles?.email}`}
+                    class="mt-2 inline-block text-xs font-medium text-purple hover:underline"
+                  >
+                    {r.profiles?.email}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p class="mt-4 text-sm text-ink-muted">{t('dash.noInterest')}</p>
+          )
+        }
+      </section>
+
+      {
+        interestSent && interestSent.length > 0 && (
+          <section>
+            <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+              {t('dash.myInterest')}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm">
+              {interestSent.map((r: any) => (
+                <li class="flex items-center justify-between gap-2">
+                  <a
+                    href={localizePath(`/projects/${r.projects?.id}`, locale)}
+                    class="text-navy hover:underline"
+                  >
+                    {r.projects?.title}
+                  </a>
+                  <span class="chip text-xs">{r.status}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+    </aside>
+  </div>
+</Layout>
