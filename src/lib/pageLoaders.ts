@@ -86,19 +86,19 @@ export async function loadProjectDetail(
     const action = String(form.get("action") ?? "");
 
     if (action === "collaborate") {
-      const { error } = await supabase.from("collaboration_requests").insert({
-        project_id: projectId,
-        user_id: profile.id,
-        message: String(form.get("message") ?? "").slice(0, 1000),
+      // offer_collaboration resolves the "slug@grade" tag and writes the row in
+      // one statement, so an offer can never be stored without the subject the
+      // teacher said they were bringing. It upserts, so a double click is
+      // already harmless.
+      const { error } = await supabase.rpc("offer_collaboration", {
+        p_project_id: projectId,
+        p_message: String(form.get("message") ?? "").slice(0, 1000),
+        p_subject_tag: String(form.get("offered_subject") ?? "") || null,
       });
-      // The unique (project_id, user_id) index makes the button idempotent —
-      // a double click is not an error worth showing anyone.
-      if (error && !/duplicate|unique/i.test(error.message)) {
+      if (error) {
         actionError = error.message;
       } else {
-        // Only on a genuinely new offer — a double click must not send a
-        // second email.
-        if (!error) {
+        {
           const { data: target } = await supabase
             .from("projects")
             .select(`title, language, ${OWNER_EMBED_NOTIFY}`)
@@ -457,13 +457,36 @@ export async function loadDashboard(
   });
 }
 
+export type ConnectionsView = "possible" | "confirmed";
+
+export interface JointProject {
+  project_id: string;
+  title: string;
+  status: ProjectStatus;
+  grades: Grade[];
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_subject: string | null;
+  owner_grade: number | null;
+  partners: {
+    name: string | null;
+    email: string | null;
+    subject: string | null;
+    grade: number | null;
+  }[];
+  partner_count: number;
+  updated_at: string;
+}
+
 export interface ConnectionsData {
-  /** Subjects that appear on at least one matching project, with how many. */
+  view: ConnectionsView;
+  /** Subjects that appear in this view, with how many projects. */
   nodes: { slug: string; projectCount: number }[];
-  /** Subject pairs that share a project, with how many they share. */
   edges: SubjectConnection[];
-  /** Subjects nobody has tagged yet — the gaps worth noticing. */
+  /** Subjects absent from this view — the gaps worth noticing. */
   untaggedSlugs: string[];
+  /** Only populated in the confirmed view: the director's list. */
+  jointProjects: JointProject[];
   totalProjects: number;
   selectedGrades: Grade[];
 }
@@ -473,8 +496,11 @@ export async function loadConnections(
 ): Promise<LoadResult<ConnectionsData>> {
   const { supabase } = ctx.locals;
 
-  // Grade lives in the URL, exactly as it does on the browse page, so a
-  // filtered graph is a link you can send someone.
+  // View and grade both live in the URL, so any state of this page is a link
+  // you can send to a colleague — or to the learning director.
+  const view: ConnectionsView =
+    ctx.url.searchParams.get("view") === "confirmed" ? "confirmed" : "possible";
+
   const selectedGrades = ctx.url.searchParams
     .getAll("grade")
     .map(Number)
@@ -482,29 +508,66 @@ export async function loadConnections(
 
   const gradeArg = selectedGrades.length > 0 ? selectedGrades : null;
 
-  // Both RPCs are SECURITY INVOKER, so RLS still decides what this teacher
-  // may see; the graph can never draw a project they cannot open.
-  const [{ data: edges }, { data: usage }, { count }] = await Promise.all([
-    supabase.rpc("subject_connections", { p_grades: gradeArg }),
-    supabase.rpc("subject_usage", { p_grades: gradeArg }),
-    supabase.from("projects").select("id", { count: "exact", head: true }),
-  ]);
+  const { count } = await supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true });
 
-  const nodes = (
-    (usage ?? []) as { subject_slug: string; project_count: number }[]
-  )
-    .map((row) => ({ slug: row.subject_slug, projectCount: row.project_count }))
-    .sort((a, b) => b.projectCount - a.projectCount);
+  let edges: SubjectConnection[] = [];
+  let nodes: { slug: string; projectCount: number }[] = [];
+  let jointProjects: JointProject[] = [];
 
-  const tagged = new Set(nodes.map((n) => n.slug));
+  if (view === "confirmed") {
+    const [{ data: confirmed }, { data: joint }] = await Promise.all([
+      supabase.rpc("collaboration_connections", { p_grades: gradeArg }),
+      supabase.rpc("joint_projects", { p_grades: gradeArg }),
+    ]);
+
+    edges = (confirmed ?? []) as SubjectConnection[];
+    jointProjects = (joint ?? []) as JointProject[];
+
+    // Node weight is derived from the confirmed edges themselves — a subject
+    // is only on this map because a real pairing put it there.
+    const weights = new Map<string, number>();
+    for (const edge of edges) {
+      weights.set(
+        edge.source_slug,
+        (weights.get(edge.source_slug) ?? 0) + edge.project_count,
+      );
+      weights.set(
+        edge.target_slug,
+        (weights.get(edge.target_slug) ?? 0) + edge.project_count,
+      );
+    }
+    nodes = [...weights.entries()]
+      .map(([slug, projectCount]) => ({ slug, projectCount }))
+      .sort((a, b) => b.projectCount - a.projectCount);
+  } else {
+    // Both RPCs are SECURITY INVOKER, so RLS still decides what this teacher
+    // may see; the graph can never draw a project they cannot open.
+    const [{ data: tagged }, { data: usage }] = await Promise.all([
+      supabase.rpc("subject_connections", { p_grades: gradeArg }),
+      supabase.rpc("subject_usage", { p_grades: gradeArg }),
+    ]);
+
+    edges = (tagged ?? []) as SubjectConnection[];
+    nodes = (
+      (usage ?? []) as { subject_slug: string; project_count: number }[]
+    )
+      .map((row) => ({ slug: row.subject_slug, projectCount: row.project_count }))
+      .sort((a, b) => b.projectCount - a.projectCount);
+  }
+
+  const present = new Set(nodes.map((n) => n.slug));
   const untaggedSlugs = SUBJECTS.map((s) => s.slug).filter(
-    (slug) => !tagged.has(slug),
+    (slug) => !present.has(slug),
   );
 
   return ok({
+    view,
     nodes,
-    edges: (edges ?? []) as SubjectConnection[],
+    edges,
     untaggedSlugs,
+    jointProjects,
     totalProjects: count ?? 0,
     selectedGrades,
   });

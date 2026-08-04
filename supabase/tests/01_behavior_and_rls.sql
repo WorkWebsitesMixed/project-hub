@@ -473,4 +473,136 @@ do $$ declare v boolean; begin
   else raise notice 'FAIL  email_notifications defaulted to %', v; end if;
 end $$;
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Confirmed collaborations
+--
+-- The point of these: one accepted partner on a project tagged across four
+-- subjects must produce ONE line, not six.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';  -- Luis
+
+-- Luis offers to help on Ana's project, bringing 12th-grade Calculus. Her
+-- project is tagged across three subjects (physics primary, calculus and
+-- design-technology cross).
+do $$ begin
+  perform public.offer_collaboration(
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    'I can take the modelling side.',
+    'calculus@12'
+  );
+  raise notice 'PASS  offer_collaboration recorded the subject offered';
+exception when others then
+  raise notice 'FAIL  offer_collaboration raised: %', sqlerrm;
+end $$;
+
+do $$ begin
+  begin
+    perform public.offer_collaboration(
+      'aaaaaaaa-0000-0000-0000-000000000001', '', 'calculus@11');
+    raise notice 'FAIL  a subject not offered at that grade was accepted';
+  exception when foreign_key_violation then
+    raise notice 'PASS  offer rejects a subject not taught at that grade';
+  end;
+end $$;
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';  -- Ana, owner
+
+do $$
+declare n_conf int; n_possible int;
+begin
+  -- Before acceptance there is nothing confirmed, however it is tagged.
+  select count(*) into n_conf from public.collaboration_connections();
+  if n_conf = 0 then
+    raise notice 'PASS  an unanswered offer draws no confirmed line';
+  else
+    raise notice 'FAIL  unanswered offer produced % confirmed lines', n_conf;
+  end if;
+
+  perform public.respond_to_collaboration(
+    (select id from public.collaboration_requests
+      where project_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+        and user_id = '22222222-2222-2222-2222-222222222222'),
+    true);
+
+  select count(*) into n_conf from public.collaboration_connections();
+  select count(*) into n_possible from public.subject_connections();
+
+  -- physics (owner's primary) <-> calculus (what Luis brought). Exactly one.
+  if n_conf = 1 then
+    raise notice 'PASS  one acceptance draws exactly one confirmed line (tagged view still shows %)', n_possible;
+  else
+    raise notice 'FAIL  expected 1 confirmed line, got %', n_conf;
+  end if;
+
+  if exists (
+    select 1 from public.collaboration_connections()
+    where source_slug = 'calculus' and target_slug = 'physics'
+  ) then
+    raise notice 'PASS  the confirmed line joins the two stated subjects';
+  else
+    raise notice 'FAIL  confirmed line is not physics <-> calculus';
+  end if;
+
+  -- The tagged view must be strictly richer, or the toggle has no purpose.
+  if n_possible > n_conf then
+    raise notice 'PASS  confirmed view is narrower than the tagged view';
+  else
+    raise notice 'FAIL  confirmed % vs tagged %', n_conf, n_possible;
+  end if;
+end $$;
+
+do $$
+declare n int; partners jsonb; pcount int;
+begin
+  select count(*) into n from public.joint_projects();
+  if n = 1 then raise notice 'PASS  joint_projects lists the one project with a partner';
+  else raise notice 'FAIL  joint_projects returned % rows', n; end if;
+
+  select jp.partners, jp.partner_count into partners, pcount
+  from public.joint_projects() jp limit 1;
+
+  if pcount = 1 and partners -> 0 ->> 'subject' = 'calculus'
+     and partners -> 0 ->> 'email' = 'luis@marymount.edu.co' then
+    raise notice 'PASS  joint_projects names the partner and their subject';
+  else
+    raise notice 'FAIL  partners payload was %', partners;
+  end if;
+end $$;
+
+-- Grade filtering must apply to the confirmed view too.
+do $$ declare g11 int; g10 int; begin
+  select count(*) into g11 from public.collaboration_connections(array[11]::smallint[]);
+  select count(*) into g10 from public.collaboration_connections(array[10]::smallint[]);
+  if g11 = 1 and g10 = 0 then
+    raise notice 'PASS  grade filter applies to confirmed collaborations';
+  else
+    raise notice 'FAIL  confirmed grade filter: g11=%, g10=%', g11, g10;
+  end if;
+end $$;
+
+-- A third teacher, on neither side of the collaboration, must still see it —
+-- that is what the learning director needs — while pending and declined
+-- offers stay private.
+reset role;
+update public.profiles set status = 'approved'
+  where email = 'student@marymount.edu.co';
+set role authenticated;
+set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
+
+do $$ declare visible int; total int; begin
+  select count(*) into visible from public.collaboration_requests;
+  select count(*) into total from public.joint_projects();
+  if visible = 1 and total = 1 then
+    raise notice 'PASS  an uninvolved teacher sees accepted collaborations only';
+  else
+    raise notice 'FAIL  uninvolved teacher saw % requests, % joint projects', visible, total;
+  end if;
+end $$;
+
 reset role;

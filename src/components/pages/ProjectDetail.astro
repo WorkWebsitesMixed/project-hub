@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
-import { STATUS_LABELS, subjectBySlug } from '../../lib/subjects';
+import { STATUS_LABELS, subjectBySlug, GRADES, subjectsForGrade } from '../../lib/subjects';
 import type { ProjectDetailData } from '../../lib/pageLoaders';
 
 interface Props {
@@ -182,6 +182,39 @@ const crossChips = chips.filter((c) => c.role === 'cross');
           ) : (
             <form method="POST" class="space-y-3">
               <input type="hidden" name="action" value="collaborate" />
+
+              <!--
+                The subject the volunteer is bringing. Asked here rather than
+                stored on their profile: a teacher who takes both Chemistry and
+                Physics knows exactly which one applies to THIS project, and a
+                profile field would go stale the next time a timetable changed.
+                This is the value that draws the confirmed line on the graph.
+              -->
+              <label class="block">
+                <span class="text-sm font-semibold text-navy">
+                  {t('project.offerSubject')}
+                </span>
+                <span class="mt-0.5 block text-xs text-ink-muted">
+                  {t('project.offerSubjectHint')}
+                </span>
+                <select
+                  name="offered_subject"
+                  required
+                  class="mt-2 w-full rounded-lg border border-line px-3 py-2 text-sm text-navy"
+                >
+                  <option value="">{t('project.offerSubjectPlaceholder')}</option>
+                  {GRADES.map((grade) => (
+                    <optgroup label={`${t('form.grade')} ${grade}`}>
+                      {subjectsForGrade(grade).map((subject) => (
+                        <option value={`${subject.slug}@${grade}`}>
+                          {localized(subject.name, locale)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+
               <textarea
                 name="message"
                 rows={3}

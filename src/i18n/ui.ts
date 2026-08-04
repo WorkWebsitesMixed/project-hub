@@ -147,6 +147,23 @@ export const ui = {
     'dash.emailOn': 'Email me about collaboration',
     'dash.emailHint': 'When a colleague offers to help, or answers your offer.',
     'dash.emailSave': 'Save',
+    'project.offerSubject': 'What do you bring to this project?',
+    'project.offerSubjectHint':
+      'The subject you would contribute. This is what draws the line on the connections map.',
+    'project.offerSubjectPlaceholder': 'Choose a subject…',
+    'conn.viewPossible': 'Possible connections',
+    'conn.viewConfirmed': 'Confirmed collaborations',
+    'conn.confirmedIntro':
+      'Only projects where a colleague offered to help and the owner accepted. One line per real pairing — a project tagged across four subjects with one partner is one collaboration, not six.',
+    'conn.confirmedEmpty': 'No confirmed collaborations yet.',
+    'conn.confirmedEmptyHint':
+      'A line appears here the moment a teacher offers to help on a project and the owner accepts.',
+    'conn.showList': 'Joint projects',
+    'conn.jointOwner': 'Leads',
+    'conn.jointPartners': 'With',
+    'conn.jointNone': 'No joint projects to list yet.',
+    'conn.gapsHintConfirmed':
+      'These subjects are not part of any confirmed collaboration yet. Some may be tagged on projects — nobody has partnered with them.',
   },
   es: {
     'site.title': 'Project Hub',
@@ -277,6 +294,23 @@ export const ui = {
     'dash.emailOn': 'Avísame por correo sobre colaboraciones',
     'dash.emailHint': 'Cuando alguien se ofrezca a ayudar, o responda a tu propuesta.',
     'dash.emailSave': 'Guardar',
+    'project.offerSubject': '¿Qué materia traes a este proyecto?',
+    'project.offerSubjectHint':
+      'La materia con la que aportarías. Es la que dibuja la línea en el mapa de conexiones.',
+    'project.offerSubjectPlaceholder': 'Elige una materia…',
+    'conn.viewPossible': 'Conexiones posibles',
+    'conn.viewConfirmed': 'Colaboraciones confirmadas',
+    'conn.confirmedIntro':
+      'Solo proyectos donde alguien se ofreció a ayudar y quien publicó aceptó. Una línea por cada pareja real: un proyecto etiquetado en cuatro materias con un colaborador es una colaboración, no seis.',
+    'conn.confirmedEmpty': 'Todavía no hay colaboraciones confirmadas.',
+    'conn.confirmedEmptyHint':
+      'Aparecerá una línea apenas alguien se ofrezca a colaborar en un proyecto y quien lo publicó acepte.',
+    'conn.showList': 'Proyectos conjuntos',
+    'conn.jointOwner': 'Lidera',
+    'conn.jointPartners': 'Con',
+    'conn.jointNone': 'Aún no hay proyectos conjuntos para listar.',
+    'conn.gapsHintConfirmed':
+      'Estas materias todavía no hacen parte de ninguna colaboración confirmada. Algunas pueden estar etiquetadas en proyectos, pero nadie se ha vinculado con ellas.',
   },
   fr: {
     'site.title': 'Project Hub',
@@ -408,6 +442,23 @@ export const ui = {
     'dash.emailOn': 'M’avertir par courriel des collaborations',
     'dash.emailHint': 'Quand un collègue propose son aide, ou répond à votre proposition.',
     'dash.emailSave': 'Enregistrer',
+    'project.offerSubject': 'Qu’apportez-vous à ce projet ?',
+    'project.offerSubjectHint':
+      'La matière avec laquelle vous contribueriez. C’est elle qui trace le trait sur la carte des connexions.',
+    'project.offerSubjectPlaceholder': 'Choisissez une matière…',
+    'conn.viewPossible': 'Connexions possibles',
+    'conn.viewConfirmed': 'Collaborations confirmées',
+    'conn.confirmedIntro':
+      'Uniquement les projets où un collègue a proposé son aide et où l’auteur a accepté. Un trait par binôme réel : un projet étiqueté sur quatre matières avec un partenaire est une collaboration, pas six.',
+    'conn.confirmedEmpty': 'Aucune collaboration confirmée pour l’instant.',
+    'conn.confirmedEmptyHint':
+      'Un trait apparaîtra dès qu’un enseignant proposera son aide et que l’auteur acceptera.',
+    'conn.showList': 'Projets conjoints',
+    'conn.jointOwner': 'Porte le projet',
+    'conn.jointPartners': 'Avec',
+    'conn.jointNone': 'Aucun projet conjoint à lister pour l’instant.',
+    'conn.gapsHintConfirmed':
+      'Ces matières ne font encore partie d’aucune collaboration confirmée. Certaines sont peut-être étiquetées sur des projets, mais personne ne s’y est associé.',
   },
 } as const;
 

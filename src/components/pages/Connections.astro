@@ -1,7 +1,14 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
-import { SUBJECTS, GRADES, FAMILIES, subjectBySlug, type Family } from '../../lib/subjects';
+import {
+  SUBJECTS,
+  GRADES,
+  FAMILIES,
+  STATUS_LABELS,
+  subjectBySlug,
+  type Family,
+} from '../../lib/subjects';
 import type { ConnectionsData } from '../../lib/pageLoaders';
 
 interface Props {
@@ -9,7 +16,10 @@ interface Props {
 }
 
 const { data } = Astro.props;
-const { nodes, edges, untaggedSlugs, totalProjects, selectedGrades } = data;
+const { view, nodes, edges, untaggedSlugs, jointProjects, totalProjects, selectedGrades } =
+  data;
+
+const isConfirmed = view === 'confirmed';
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
@@ -105,7 +115,45 @@ const subjectHref = (slug: string) =>
     </p>
   </div>
 
-  <p class="mt-2 max-w-2xl leading-relaxed text-ink-muted">{t('conn.intro')}</p>
+  <p class="mt-2 max-w-2xl leading-relaxed text-ink-muted">
+    {isConfirmed ? t('conn.confirmedIntro') : t('conn.intro')}
+  </p>
+
+  <!--
+    Two questions, two views. A teacher asks "who might I work with?" and
+    needs the tagged view. A learning director asks "what joint work is
+    actually happening?" and needs this one. Replacing one with the other
+    would have cost the hub its discovery function.
+  -->
+  <div class="mt-6 flex flex-wrap gap-1.5">
+    {
+      (
+        [
+          ['possible', t('conn.viewPossible')],
+          ['confirmed', t('conn.viewConfirmed')],
+        ] as const
+      ).map(([key, label]) => {
+        const params = new URLSearchParams();
+        if (key === 'confirmed') params.set('view', 'confirmed');
+        for (const grade of selectedGrades) params.append('grade', String(grade));
+        const qs = params.toString();
+        return (
+          <a
+            href={`${localizePath('/connections', locale)}${qs ? `?${qs}` : ''}`}
+            aria-current={view === key ? 'true' : undefined}
+            class:list={[
+              'rounded-lg px-3.5 py-1.5 text-sm transition',
+              view === key
+                ? 'bg-navy font-semibold text-white'
+                : 'border border-line text-ink-muted hover:bg-surface-sunken hover:text-navy',
+            ]}
+          >
+            {label}
+          </a>
+        );
+      })
+    }
+  </div>
 
   <!--
     Grade filter. Matches on the project's target grade, the same meaning the
@@ -114,6 +162,7 @@ const subjectHref = (slug: string) =>
     edge belongs to an 11th-grade project.
   -->
   <form method="GET" class="mt-6 flex flex-wrap items-center gap-2">
+    {isConfirmed && <input type="hidden" name="view" value="confirmed" />}
     <span class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
       {t('filter.grade')}
     </span>
@@ -154,8 +203,12 @@ const subjectHref = (slug: string) =>
   {
     drawnEdges.length === 0 ? (
       <div class="mt-10 rounded-card border border-dashed border-line px-6 py-16 text-center">
-        <p class="text-ink-muted">{t('conn.empty')}</p>
-        <p class="mt-1 text-sm text-ink-muted">{t('conn.emptyHint')}</p>
+        <p class="text-ink-muted">
+          {isConfirmed ? t('conn.confirmedEmpty') : t('conn.empty')}
+        </p>
+        <p class="mt-1 text-sm text-ink-muted">
+          {isConfirmed ? t('conn.confirmedEmptyHint') : t('conn.emptyHint')}
+        </p>
         <a
           href={localizePath('/projects/new', locale)}
           class="mt-6 inline-block rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
@@ -260,13 +313,105 @@ const subjectHref = (slug: string) =>
     )
   }
 
+  <!--
+    The director's list. Collapsed by default — the picture is the headline,
+    the names are what you need when someone asks for specifics in a meeting.
+    A plain <details> so it needs no JavaScript and survives a refresh.
+  -->
+  {
+    isConfirmed && (
+      <details class="mt-12 rounded-card border border-line">
+        <summary class="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-navy transition hover:bg-surface-sunken">
+          {t('conn.showList')}
+          <span class="chip tone-green ml-2">{jointProjects.length}</span>
+        </summary>
+
+        <div class="border-t border-line px-4 py-4">
+          {jointProjects.length === 0 ? (
+            <p class="py-6 text-center text-sm text-ink-muted">{t('conn.jointNone')}</p>
+          ) : (
+            <ul class="space-y-4">
+              {jointProjects.map((jp) => {
+                const ownerSubject = jp.owner_subject ? subjectBySlug(jp.owner_subject) : null;
+                return (
+                  <li class="rounded-card border border-line p-4">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="chip tone-cyan">{STATUS_LABELS[jp.status][locale]}</span>
+                      {jp.grades.map((g) => (
+                        <span class="chip">
+                          {t('form.grade')} {g}
+                        </span>
+                      ))}
+                    </div>
+
+                    <a
+                      href={localizePath(`/projects/${jp.project_id}`, locale)}
+                      class="mt-2 block font-semibold text-navy hover:underline"
+                    >
+                      {jp.title}
+                    </a>
+
+                    <dl class="mt-3 grid gap-2 text-sm sm:grid-cols-[5rem_1fr]">
+                      <dt class="text-xs font-medium uppercase tracking-wide text-ink-muted">
+                        {t('conn.jointOwner')}
+                      </dt>
+                      <dd class="flex flex-wrap items-center gap-2">
+                        <span class="text-navy">{jp.owner_name ?? jp.owner_email}</span>
+                        {ownerSubject && (
+                          <span class={`chip chip-primary family-${ownerSubject.family}`}>
+                            {localized(ownerSubject.name, locale)}
+                            {jp.owner_grade ? ` · ${jp.owner_grade}` : ''}
+                          </span>
+                        )}
+                      </dd>
+
+                      <dt class="text-xs font-medium uppercase tracking-wide text-ink-muted">
+                        {t('conn.jointPartners')}
+                      </dt>
+                      <dd class="space-y-1.5">
+                        {jp.partners.map((partner) => {
+                          const subject = partner.subject ? subjectBySlug(partner.subject) : null;
+                          return (
+                            <div class="flex flex-wrap items-center gap-2">
+                              <span class="text-navy">{partner.name ?? partner.email}</span>
+                              {subject && (
+                                <span class={`chip family-${subject.family}`}>
+                                  {localized(subject.name, locale)}
+                                  {partner.grade ? ` · ${partner.grade}` : ''}
+                                </span>
+                              )}
+                              {partner.email && (
+                                <a
+                                  href={`mailto:${partner.email}`}
+                                  class="text-xs text-purple hover:underline"
+                                >
+                                  {partner.email}
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </dd>
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </details>
+    )
+  }
+
   {
     untagged.length > 0 && (
       <section class="mt-12">
         <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
           {t('conn.gaps')}
         </h2>
-        <p class="mt-1 max-w-2xl text-sm text-ink-muted">{t('conn.gapsHint')}</p>
+        <p class="mt-1 max-w-2xl text-sm text-ink-muted">
+          {isConfirmed ? t('conn.gapsHintConfirmed') : t('conn.gapsHint')}
+        </p>
         <div class="mt-4 flex flex-wrap gap-1.5">
           {untagged.map((subject) => (
             <span class="chip opacity-60">{localized(subject.name, locale)}</span>
