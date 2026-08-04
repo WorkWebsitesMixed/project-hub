@@ -30,24 +30,47 @@ alone does **not** identify a teacher. Access has two gates:
 
 ## Email notifications
 
-Collaboration offers and their answers can be emailed through Resend. The
-feature is **off unless `RESEND_API_KEY` is set** — without it every send
-returns quietly and the hub works in-app only, so it can ship before the
-school's sending domain is arranged.
+Collaboration offers and their answers can be emailed. The feature is **off
+unless a transport is configured** — without one, every send returns quietly
+and the hub works in-app only.
+
+| Transport | Set | Notes |
+| --- | --- | --- |
+| Google Workspace mailbox | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` | Preferred. No DNS change needed. |
+| Resend | `RESEND_API_KEY` | Used only when no `SMTP_*` values are set. Needs SPF, DKIM and DMARC records. |
+
+`marymount.edu.co` already publishes SPF, DKIM and a DMARC policy of
+`p=quarantine`, all configured for Google Workspace. Sending through a school
+mailbox therefore inherits authentication that already works. Adding an outside
+provider would mean editing the SPF record that the whole school's mail depends
+on — the record currently authorises Google, GoDaddy, Mailchimp and Zoho, and
+uses 5 of the 10 DNS lookups the standard allows.
+
+`SMTP_PASS` is a 16-character **app password**, spaces removed — not the account
+password. Generating one requires 2-Step Verification on that account, which is
+precisely why app passwords exist: an automated program cannot type a code from
+someone's phone. Note that an app password authenticates against the whole
+mailbox, not just sending, which is the argument for a dedicated empty mailbox
+rather than a personal account.
+
+Test the credentials before deploying anything:
+
+```bash
+npm run email:test -- someone@marymount.edu.co
+```
+
+That runs from your machine, so the password never leaves it. It names the
+three failures worth distinguishing: rejected credentials, an unreachable
+relay, and a wrong sender address.
 
 Sending is never fatal: the collaboration request is already committed by the
-time mail is attempted, so a provider outage or a bounced address is logged and
-swallowed behind a 5-second timeout rather than turning a successful click into
-an error page. Teachers can opt out from their dashboard.
+time mail is attempted, so an outage or a bounced address is logged and
+swallowed behind a short timeout rather than turning a successful click into an
+error page. Teachers can opt out from their dashboard.
 
 Messages are written in the **project's** language rather than a stored
 per-teacher preference: the owner wrote the project in that language, and the
 volunteer chose to offer help on it.
-
-| Variable | Notes |
-| --- | --- |
-| `RESEND_API_KEY` | Server-only. Absent = feature off. |
-| `EMAIL_FROM` | Needs a domain verified in Resend. `onboarding@resend.dev` only delivers to the Resend account owner. |
 
 ## Languages
 
@@ -70,6 +93,7 @@ npm run dev
 | `npm run check` | Astro + TypeScript diagnostics |
 | `npm run db:test` | Apply migrations to a throwaway Postgres and run the schema tests |
 | `npm run seed:generate` | Rebuild the subject seed SQL from `src/lib/subjects.ts` |
+| `npm run email:test -- <addr>` | Send one real email through the configured SMTP account |
 
 ## Database
 

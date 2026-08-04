@@ -1,16 +1,27 @@
 /**
- * Transactional email for collaboration offers, sent through Resend.
+ * Transactional email for collaboration offers.
  *
- * Three deliberate properties:
+ * Two possible transports, chosen by whichever environment variables are set:
  *
- * 1. **Optional.** With no RESEND_API_KEY set, every function here returns
- *    quietly. The hub works exactly as before — in-app only — so the feature
- *    can ship before the school's sending domain is sorted out.
+ *   SMTP_HOST + SMTP_USER + SMTP_PASS  → a Google Workspace mailbox
+ *   RESEND_API_KEY                     → Resend
+ *   neither                            → the hub runs in-app only, silently
+ *
+ * SMTP is the intended route here. marymount.edu.co already publishes SPF,
+ * DKIM and a DMARC policy of p=quarantine, all configured for Workspace, so
+ * sending through a school mailbox inherits authentication that already works
+ * and needs no DNS change at all. Adding an outside provider would mean
+ * editing the SPF record the whole school's mail depends on.
+ *
+ * Three properties held on purpose:
+ *
+ * 1. **Optional.** With nothing configured, every function here returns
+ *    quietly. The hub works exactly as before — in-app only.
  *
  * 2. **Never fatal.** The collaboration request is already committed by the
- *    time we get here. A Resend outage, a bounced address or a slow response
- *    must not turn a successful action into an error page, so failures are
- *    logged and swallowed, behind a short timeout.
+ *    time we get here. An outage, a bounced address or a slow relay must not
+ *    turn a successful action into an error page, so failures are logged and
+ *    swallowed, behind a short timeout.
  *
  * 3. **Written in the project's language.** We do not store a per-teacher
  *    language preference, and guessing from a browser header is worse than
@@ -21,9 +32,24 @@
 import type { Locale } from '../i18n/ui';
 
 const RESEND_API_KEY = import.meta.env.RESEND_API_KEY;
-const EMAIL_FROM = import.meta.env.EMAIL_FROM ?? 'Project Hub <onboarding@resend.dev>';
 
-export const emailEnabled = Boolean(RESEND_API_KEY);
+const SMTP_HOST = import.meta.env.SMTP_HOST;
+const SMTP_PORT = Number(import.meta.env.SMTP_PORT ?? 587);
+const SMTP_USER = import.meta.env.SMTP_USER;
+const SMTP_PASS = import.meta.env.SMTP_PASS;
+
+const useSmtp = Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
+
+const EMAIL_FROM =
+  import.meta.env.EMAIL_FROM ?? SMTP_USER ?? 'Project Hub <onboarding@resend.dev>';
+
+export const emailTransport: 'smtp' | 'resend' | 'none' = useSmtp
+  ? 'smtp'
+  : RESEND_API_KEY
+    ? 'resend'
+    : 'none';
+
+export const emailEnabled = emailTransport !== 'none';
 
 interface SendArgs {
   to: string;
@@ -36,7 +62,7 @@ interface SendArgs {
   footer: string;
 }
 
-async function send({
+export async function send({
   to,
   subject,
   heading,
@@ -46,7 +72,7 @@ async function send({
   ctaUrl,
   footer,
 }: SendArgs): Promise<void> {
-  if (!RESEND_API_KEY) return;
+  if (!emailEnabled) return;
 
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -77,6 +103,26 @@ async function send({
     .join('\n');
 
   try {
+    if (useSmtp) {
+      // Imported lazily so nodemailer is never pulled into a build that does
+      // not send mail.
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        // 465 is implicit TLS; 587 upgrades in-band with STARTTLS.
+        secure: SMTP_PORT === 465,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+        // A hung relay must not hold up the page. The action already succeeded.
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+      });
+
+      await transporter.sendMail({ from: EMAIL_FROM, to, subject, html, text });
+      return;
+    }
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {

@@ -12,7 +12,8 @@
     "astro": "astro",
     "check": "astro check",
     "seed:generate": "node --experimental-strip-types scripts/generate-seed.ts",
-    "db:test": "bash scripts/test-db.sh"
+    "db:test": "bash scripts/test-db.sh",
+    "email:test": "node --experimental-strip-types scripts/send-test-email.ts"
   },
   "dependencies": {
     "@astrojs/react": "^6.0.2",
@@ -23,6 +24,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "astro": "^7.1.6",
+    "nodemailer": "^9.0.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3"
@@ -31,6 +33,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/node": "^26.1.2",
+    "@types/nodemailer": "^8.0.1",
     "typescript": "^6.0.3"
   }
 }
