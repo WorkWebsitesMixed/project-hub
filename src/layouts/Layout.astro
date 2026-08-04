@@ -29,6 +29,7 @@ const isApproved = Astro.locals.profile?.status === 'approved';
 const navLinks = isApproved
   ? [
       { href: '/projects', label: t('nav.browse') },
+      { href: '/connections', label: t('nav.connections') },
       { href: '/projects/new', label: t('nav.new') },
       { href: '/dashboard', label: t('nav.dashboard') },
     ]

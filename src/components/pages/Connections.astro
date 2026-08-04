@@ -1,0 +1,229 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
+import { SUBJECTS, FAMILIES, subjectBySlug, type Family } from '../../lib/subjects';
+import type { ConnectionsData } from '../../lib/pageLoaders';
+
+interface Props {
+  data: ConnectionsData;
+}
+
+const { data } = Astro.props;
+const { nodes, edges, untaggedSlugs, totalProjects } = data;
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+
+/*
+ * A chord diagram, laid out on the server.
+ *
+ * No charting library and no client JavaScript: with at most 22 subjects the
+ * positions are a few lines of trigonometry, and a force simulation would only
+ * add a dependency, a loading flicker, and a layout that moves every reload.
+ * Deterministic also means the same project sits in the same place tomorrow,
+ * which matters if someone is describing it to a colleague over a desk.
+ */
+
+const R = 200;
+const CX = 380;
+const CY = 330;
+
+// Order by subject family so departments cluster into arcs rather than
+// scattering — the shape of the school should be visible before any line is.
+const familyOrder = Object.keys(FAMILIES) as Family[];
+const laidOut = nodes
+  .map((node) => ({ ...node, subject: subjectBySlug(node.slug)! }))
+  .filter((n) => n.subject)
+  .sort((a, b) => {
+    const fa = familyOrder.indexOf(a.subject.family);
+    const fb = familyOrder.indexOf(b.subject.family);
+    if (fa !== fb) return fa - fb;
+    return SUBJECTS.indexOf(a.subject) - SUBJECTS.indexOf(b.subject);
+  })
+  .map((node, i, all) => {
+    const angle = (i / all.length) * Math.PI * 2 - Math.PI / 2;
+    return {
+      ...node,
+      angle,
+      deg: (angle * 180) / Math.PI,
+      x: Math.cos(angle) * R,
+      y: Math.sin(angle) * R,
+      // Node size carries how much work a subject is involved in.
+      r: Math.min(4 + node.projectCount * 2.5, 16),
+      // Labels on the left half read upside down unless they are flipped.
+      flip: Math.cos(angle) < 0,
+      accent: FAMILIES[node.subject.family].accent,
+      name: localized(node.subject.name, locale),
+    };
+  });
+
+const byslug = new Map(laidOut.map((n) => [n.slug, n]));
+
+const maxWeight = Math.max(1, ...edges.map((e) => e.project_count));
+
+const drawnEdges = edges
+  .map((edge) => {
+    const a = byslug.get(edge.source_slug);
+    const b = byslug.get(edge.target_slug);
+    if (!a || !b) return null;
+    // Pull the control point toward the centre so chords bow inward and stay
+    // distinguishable instead of overlapping as straight lines.
+    const mx = ((a.x + b.x) / 2) * 0.25;
+    const my = ((a.y + b.y) / 2) * 0.25;
+    return {
+      ...edge,
+      d: `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`,
+      width: 1.25 + (edge.project_count / maxWeight) * 4,
+      opacity: 0.25 + (edge.project_count / maxWeight) * 0.45,
+      aName: a.name,
+      bName: b.name,
+    };
+  })
+  .filter((e): e is NonNullable<typeof e> => e !== null)
+  .sort((a, b) => a.project_count - b.project_count);
+
+const untagged = untaggedSlugs
+  .map((slug) => subjectBySlug(slug))
+  .filter((s): s is NonNullable<typeof s> => Boolean(s));
+
+const subjectHref = (slug: string) =>
+  `${localizePath('/projects', locale)}?subject=${encodeURIComponent(slug)}`;
+---
+
+<Layout title={t('conn.title')}>
+  <div class="flex flex-wrap items-baseline justify-between gap-4">
+    <h1 class="text-3xl font-bold text-navy">{t('conn.title')}</h1>
+    <p class="text-sm text-ink-muted">
+      {totalProjects}
+      {t('browse.results')} · {laidOut.length}
+      {t('filter.subject').toLowerCase()}
+    </p>
+  </div>
+
+  <p class="mt-2 max-w-2xl leading-relaxed text-ink-muted">{t('conn.intro')}</p>
+
+  {
+    drawnEdges.length === 0 ? (
+      <div class="mt-10 rounded-card border border-dashed border-line px-6 py-16 text-center">
+        <p class="text-ink-muted">{t('conn.empty')}</p>
+        <p class="mt-1 text-sm text-ink-muted">{t('conn.emptyHint')}</p>
+        <a
+          href={localizePath('/projects/new', locale)}
+          class="mt-6 inline-block rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+        >
+          {t('nav.new')}
+        </a>
+      </div>
+    ) : (
+      <div class="mt-8 overflow-x-auto">
+        <svg
+          viewBox="0 0 760 700"
+          class="mx-auto h-auto w-full min-w-[560px] max-w-3xl"
+          role="img"
+          aria-label={t('conn.title')}
+        >
+          <g transform={`translate(${CX} ${CY})`}>
+            {/* Chords first, so nodes and labels sit on top of them. */}
+            {drawnEdges.map((edge) => (
+              <path
+                d={edge.d}
+                fill="none"
+                stroke="var(--color-navy)"
+                stroke-width={edge.width}
+                stroke-opacity={edge.opacity}
+                stroke-linecap="round"
+              >
+                <title>
+                  {edge.aName} ↔ {edge.bName} · {edge.project_count} {t('conn.shared')}
+                </title>
+              </path>
+            ))}
+
+            {laidOut.map((node) => (
+              <a href={subjectHref(node.slug)}>
+                <circle
+                  cx={node.x}
+                  cy={node.y}
+                  r={node.r}
+                  style={`fill: var(--color-${node.accent})`}
+                  stroke="var(--color-surface)"
+                  stroke-width="2"
+                >
+                  <title>
+                    {node.name} · {node.projectCount} {t('conn.tagged')}
+                  </title>
+                </circle>
+
+                <g transform={`rotate(${node.deg}) translate(${R + node.r + 8} 0)`}>
+                  <text
+                    transform={node.flip ? 'rotate(180)' : undefined}
+                    text-anchor={node.flip ? 'end' : 'start'}
+                    dominant-baseline="middle"
+                    style="fill: var(--color-navy)"
+                    font-size="13"
+                  >
+                    {node.name}
+                  </text>
+                </g>
+              </a>
+            ))}
+          </g>
+        </svg>
+      </div>
+    )
+  }
+
+  <!--
+    The same information as a table. The chord diagram is the quick read; this
+    is the one you can sort through, and the one a screen reader can follow.
+  -->
+  {
+    drawnEdges.length > 0 && (
+      <section class="mt-12">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+          {t('conn.pairs')}
+        </h2>
+        <ul class="mt-4 divide-y divide-line rounded-card border border-line">
+          {[...drawnEdges].reverse().map((edge) => (
+            <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+              <span class="flex flex-wrap items-center gap-2">
+                <a
+                  href={subjectHref(edge.source_slug)}
+                  class={`chip family-${subjectBySlug(edge.source_slug)?.family}`}
+                >
+                  {edge.aName}
+                </a>
+                <span class="text-ink-muted">↔</span>
+                <a
+                  href={subjectHref(edge.target_slug)}
+                  class={`chip family-${subjectBySlug(edge.target_slug)?.family}`}
+                >
+                  {edge.bName}
+                </a>
+              </span>
+              <span class="text-xs text-ink-muted">
+                {edge.project_count} {t('conn.shared')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    untagged.length > 0 && (
+      <section class="mt-12">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+          {t('conn.gaps')}
+        </h2>
+        <p class="mt-1 max-w-2xl text-sm text-ink-muted">{t('conn.gapsHint')}</p>
+        <div class="mt-4 flex flex-wrap gap-1.5">
+          {untagged.map((subject) => (
+            <span class="chip opacity-60">{localized(subject.name, locale)}</span>
+          ))}
+        </div>
+      </section>
+    )
+  }
+</Layout>

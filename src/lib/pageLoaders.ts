@@ -11,8 +11,12 @@
  * renderers that cannot silently swallow a response.
  */
 
-import type { Profile, ProfileStatus } from "./database.types";
-import type { Grade, ProjectStatus } from "./subjects";
+import type {
+  Profile,
+  ProfileStatus,
+  SubjectConnection,
+} from "./database.types";
+import { SUBJECTS, type Grade, type ProjectStatus } from "./subjects";
 import type { Locale } from "../i18n/ui";
 import { localizePath } from "../i18n/utils";
 
@@ -382,5 +386,51 @@ export async function loadDashboard(
       project: r.projects ?? null,
     })),
     error,
+  });
+}
+
+export interface ConnectionsData {
+  /** Subjects that appear on at least one project, with how many projects. */
+  nodes: { slug: string; projectCount: number }[];
+  /** Subject pairs that share a project, with how many they share. */
+  edges: SubjectConnection[];
+  /** Subjects nobody has tagged yet — the gaps worth noticing. */
+  untaggedSlugs: string[];
+  totalProjects: number;
+}
+
+export async function loadConnections(ctx: Ctx): Promise<LoadResult<ConnectionsData>> {
+  const { supabase } = ctx.locals;
+
+  const [{ data: edges }, { data: tagRows }, { count }] = await Promise.all([
+    supabase.rpc('subject_connections'),
+    // RLS filters both of these, so the graph only ever draws what this
+    // teacher is allowed to see.
+    supabase.from('project_subjects').select('project_id, grade_subjects(subject_slug)'),
+    supabase.from('projects').select('id', { count: 'exact', head: true }),
+  ]);
+
+  // A subject tagged at two different grades on the same project is still one
+  // project for that subject, so count distinct project ids rather than rows.
+  const projectsBySubject = new Map<string, Set<string>>();
+  for (const row of (tagRows ?? []) as any[]) {
+    const slug = row.grade_subjects?.subject_slug;
+    if (!slug) continue;
+    if (!projectsBySubject.has(slug)) projectsBySubject.set(slug, new Set());
+    projectsBySubject.get(slug)!.add(row.project_id);
+  }
+
+  const nodes = [...projectsBySubject.entries()]
+    .map(([slug, projects]) => ({ slug, projectCount: projects.size }))
+    .sort((a, b) => b.projectCount - a.projectCount);
+
+  const tagged = new Set(nodes.map((n) => n.slug));
+  const untaggedSlugs = SUBJECTS.map((s) => s.slug).filter((slug) => !tagged.has(slug));
+
+  return ok({
+    nodes,
+    edges: (edges ?? []) as SubjectConnection[],
+    untaggedSlugs,
+    totalProjects: count ?? 0,
   });
 }

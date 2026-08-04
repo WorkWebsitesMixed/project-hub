@@ -132,6 +132,17 @@ export const ui = {
     'dash.declined': 'Declined',
     'dash.waiting': 'Waiting on you',
     'dash.acceptHint': 'Accepting gives this teacher edit access to the project.',
+    'nav.connections': 'Connections',
+    'conn.title': 'Subject connections',
+    'conn.intro':
+      'Every line is a project that two subjects share. Thicker lines mean more projects. Click a subject to see them.',
+    'conn.empty': 'No connections to draw yet.',
+    'conn.emptyHint': 'Post a project and tag it across two subjects — the first line appears immediately.',
+    'conn.pairs': 'Connected pairs',
+    'conn.shared': 'shared projects',
+    'conn.tagged': 'projects tagged',
+    'conn.gaps': 'Not yet on the board',
+    'conn.gapsHint': 'These subjects have no projects tagged to them. Each one is a department nobody has reached out to yet.',
   },
   es: {
     'site.title': 'Project Hub',
@@ -247,6 +258,17 @@ export const ui = {
     'dash.declined': 'Rechazada',
     'dash.waiting': 'Esperando tu respuesta',
     'dash.acceptHint': 'Aceptar le da a esta persona acceso de edición al proyecto.',
+    'nav.connections': 'Conexiones',
+    'conn.title': 'Conexiones entre materias',
+    'conn.intro':
+      'Cada línea es un proyecto que dos materias comparten. Las líneas más gruesas son más proyectos. Haz clic en una materia para verlos.',
+    'conn.empty': 'Todavía no hay conexiones que dibujar.',
+    'conn.emptyHint': 'Publica un proyecto y etiquétalo con dos materias — la primera línea aparece de inmediato.',
+    'conn.pairs': 'Pares conectados',
+    'conn.shared': 'proyectos compartidos',
+    'conn.tagged': 'proyectos etiquetados',
+    'conn.gaps': 'Aún sin aparecer',
+    'conn.gapsHint': 'Estas materias no tienen ningún proyecto etiquetado. Cada una es un departamento con el que nadie se ha conectado todavía.',
   },
   fr: {
     'site.title': 'Project Hub',
@@ -363,6 +385,17 @@ export const ui = {
     'dash.declined': 'Refusée',
     'dash.waiting': 'En attente de votre réponse',
     'dash.acceptHint': 'Accepter donne à cette personne un accès en modification au projet.',
+    'nav.connections': 'Connexions',
+    'conn.title': 'Connexions entre matières',
+    'conn.intro':
+      'Chaque trait est un projet que deux matières partagent. Plus le trait est épais, plus il y a de projets. Cliquez sur une matière pour les voir.',
+    'conn.empty': 'Aucune connexion à tracer pour l’instant.',
+    'conn.emptyHint': 'Publiez un projet et étiquetez-le avec deux matières — le premier trait apparaît aussitôt.',
+    'conn.pairs': 'Paires connectées',
+    'conn.shared': 'projets partagés',
+    'conn.tagged': 'projets étiquetés',
+    'conn.gaps': 'Pas encore sur le tableau',
+    'conn.gapsHint': 'Ces matières n’ont aucun projet étiqueté. Chacune est un département que personne n’a encore sollicité.',
   },
 } as const;
 

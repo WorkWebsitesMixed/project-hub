@@ -1,0 +1,11 @@
+---
+import Connections from '../../components/pages/Connections.astro';
+import { loadConnections } from '../../lib/pageLoaders';
+
+const result = await loadConnections(Astro);
+if (result.kind === 'redirect') return Astro.redirect(result.to);
+
+const { data } = result;
+---
+
+<Connections data={data} />
