@@ -162,6 +162,14 @@ export const ui = {
     'conn.jointOwner': 'Leads',
     'conn.jointPartners': 'With',
     'conn.jointNone': 'No joint projects to list yet.',
+    'conn.offerNoSubject':
+      'You have not recorded which subject you bring. Without it this collaboration cannot be drawn on the connections map.',
+    'conn.offerYourSubject': 'You are bringing',
+    'conn.offerChange': 'Change what I bring',
+    'conn.offerUpdate': 'Update',
+    'conn.undrawableTitle': 'Confirmed, but not drawable',
+    'conn.undrawableBody':
+      'collaboration(s) here have no subject recorded for the partner, so no line can be drawn. Offers made before the form asked for a subject look like this. The colleague can add it from the project page.',
     'conn.gapsHintConfirmed':
       'These subjects are not part of any confirmed collaboration yet. Some may be tagged on projects — nobody has partnered with them.',
   },
@@ -309,6 +317,14 @@ export const ui = {
     'conn.jointOwner': 'Lidera',
     'conn.jointPartners': 'Con',
     'conn.jointNone': 'Aún no hay proyectos conjuntos para listar.',
+    'conn.offerNoSubject':
+      'No registraste con qué materia aportas. Sin eso, esta colaboración no se puede dibujar en el mapa de conexiones.',
+    'conn.offerYourSubject': 'Aportas con',
+    'conn.offerChange': 'Cambiar mi aporte',
+    'conn.offerUpdate': 'Actualizar',
+    'conn.undrawableTitle': 'Confirmadas, pero sin dibujar',
+    'conn.undrawableBody':
+      'colaboración(es) aquí no tienen registrada la materia del colaborador, así que no se puede trazar la línea. Las propuestas hechas antes de que el formulario pidiera la materia quedan así. Quien se propuso puede agregarla desde la página del proyecto.',
     'conn.gapsHintConfirmed':
       'Estas materias todavía no hacen parte de ninguna colaboración confirmada. Algunas pueden estar etiquetadas en proyectos, pero nadie se ha vinculado con ellas.',
   },
@@ -457,6 +473,14 @@ export const ui = {
     'conn.jointOwner': 'Porte le projet',
     'conn.jointPartners': 'Avec',
     'conn.jointNone': 'Aucun projet conjoint à lister pour l’instant.',
+    'conn.offerNoSubject':
+      'Vous n’avez pas indiqué la matière que vous apportez. Sans elle, cette collaboration ne peut pas être tracée sur la carte.',
+    'conn.offerYourSubject': 'Vous apportez',
+    'conn.offerChange': 'Modifier mon apport',
+    'conn.offerUpdate': 'Mettre à jour',
+    'conn.undrawableTitle': 'Confirmées, mais non traçables',
+    'conn.undrawableBody':
+      'collaboration(s) ici n’ont pas de matière enregistrée pour le partenaire, donc aucun trait ne peut être tracé. Les propositions faites avant que le formulaire ne demande la matière ressemblent à cela. Le collègue peut l’ajouter depuis la page du projet.',
     'conn.gapsHintConfirmed':
       'Ces matières ne font encore partie d’aucune collaboration confirmée. Certaines sont peut-être étiquetées sur des projets, mais personne ne s’y est associé.',
   },

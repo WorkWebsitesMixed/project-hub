@@ -19,6 +19,7 @@ const {
   grades,
   tags,
   attachments,
+  myOffer,
   hasOfferedToCollaborate,
   isOwner,
   canEdit,
@@ -37,6 +38,15 @@ const chips = tags.map((tag) => {
     name: subject ? localized(subject.name, locale) : tag.slug,
   };
 });
+
+// An offer made before the form asked for a subject has none recorded. The
+// collaboration is real and shows in the director's list, but the connections
+// map cannot draw a line without knowing what the teacher brings — so the
+// project page says so, where the person who knows the answer is standing.
+const offeredSubject = myOffer?.subjectTag
+  ? subjectBySlug(myOffer.subjectTag.split('@')[0])
+  : null;
+const offeredGrade = myOffer?.subjectTag?.split('@')[1];
 
 const primaryChips = chips.filter((c) => c.role === 'primary');
 const crossChips = chips.filter((c) => c.role === 'cross');
@@ -178,7 +188,63 @@ const crossChips = chips.filter((c) => c.role === 'cross');
           isOwner ? (
             <p class="text-sm text-ink-muted">{t('project.ownProject')}</p>
           ) : hasOfferedToCollaborate ? (
-            <p class="text-sm font-medium text-navy">✓ {t('project.collabAlready')}</p>
+            <div>
+              <p class="text-sm font-medium text-navy">✓ {t('project.collabAlready')}</p>
+
+              {offeredSubject ? (
+                <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                  {t('conn.offerYourSubject')}
+                  <span class={`chip family-${offeredSubject.family}`}>
+                    {localized(offeredSubject.name, locale)}
+                    {offeredGrade ? ` · ${offeredGrade}` : ''}
+                  </span>
+                </p>
+              ) : (
+                <p class="mt-3 rounded-lg border border-amber bg-amber-tint px-3 py-2 text-xs leading-relaxed text-navy">
+                  {t('conn.offerNoSubject')}
+                </p>
+              )}
+
+              <details class="mt-3">
+                <summary class="cursor-pointer text-xs font-medium text-purple hover:underline">
+                  {t('conn.offerChange')}
+                </summary>
+                <form method="POST" class="mt-3 space-y-3">
+                  <input type="hidden" name="action" value="collaborate" />
+                  <select
+                    name="offered_subject"
+                    required
+                    class="w-full rounded-lg border border-line px-3 py-2 text-sm text-navy"
+                  >
+                    <option value="">{t('project.offerSubjectPlaceholder')}</option>
+                    {GRADES.map((grade) => (
+                      <optgroup label={`${t('form.grade')} ${grade}`}>
+                        {subjectsForGrade(grade).map((subject) => (
+                          <option
+                            value={`${subject.slug}@${grade}`}
+                            selected={myOffer?.subjectTag === `${subject.slug}@${grade}`}
+                          >
+                            {localized(subject.name, locale)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <textarea
+                    name="message"
+                    rows={2}
+                    placeholder={t('project.collabMessage')}
+                    class="w-full rounded-lg border border-line px-3 py-2 text-sm text-navy placeholder:text-ink-muted"
+                  >{myOffer?.message}</textarea>
+                  <button
+                    type="submit"
+                    class="w-full rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-navy-soft"
+                  >
+                    {t('conn.offerUpdate')}
+                  </button>
+                </form>
+              </details>
+            </div>
           ) : (
             <form method="POST" class="space-y-3">
               <input type="hidden" name="action" value="collaborate" />

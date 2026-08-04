@@ -16,8 +16,16 @@ interface Props {
 }
 
 const { data } = Astro.props;
-const { view, nodes, edges, untaggedSlugs, jointProjects, totalProjects, selectedGrades } =
-  data;
+const {
+  view,
+  nodes,
+  edges,
+  untaggedSlugs,
+  jointProjects,
+  partnersMissingSubject,
+  totalProjects,
+  selectedGrades,
+} = data;
 
 const isConfirmed = view === 'confirmed';
 
@@ -203,18 +211,39 @@ const subjectHref = (slug: string) =>
   {
     drawnEdges.length === 0 ? (
       <div class="mt-10 rounded-card border border-dashed border-line px-6 py-16 text-center">
+        <!--
+          "None yet" is only true when there is genuinely nothing. If joint
+          projects exist but none can be drawn, say that instead — the list
+          right below would otherwise contradict this message.
+        -->
         <p class="text-ink-muted">
-          {isConfirmed ? t('conn.confirmedEmpty') : t('conn.empty')}
+          {
+            isConfirmed && jointProjects.length > 0
+              ? t('conn.undrawableTitle')
+              : isConfirmed
+                ? t('conn.confirmedEmpty')
+                : t('conn.empty')
+          }
         </p>
-        <p class="mt-1 text-sm text-ink-muted">
-          {isConfirmed ? t('conn.confirmedEmptyHint') : t('conn.emptyHint')}
+        <p class="mx-auto mt-1 max-w-lg text-sm leading-relaxed text-ink-muted">
+          {
+            isConfirmed && jointProjects.length > 0
+              ? `${partnersMissingSubject} ${t('conn.undrawableBody')}`
+              : isConfirmed
+                ? t('conn.confirmedEmptyHint')
+                : t('conn.emptyHint')
+          }
         </p>
-        <a
-          href={localizePath('/projects/new', locale)}
-          class="mt-6 inline-block rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
-        >
-          {t('nav.new')}
-        </a>
+        {
+          !(isConfirmed && jointProjects.length > 0) && (
+            <a
+              href={localizePath('/projects/new', locale)}
+              class="mt-6 inline-block rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+            >
+              {t('nav.new')}
+            </a>
+          )
+        }
       </div>
     ) : (
       <div class="mt-8 overflow-x-auto">
@@ -327,6 +356,11 @@ const subjectHref = (slug: string) =>
         </summary>
 
         <div class="border-t border-line px-4 py-4">
+          {partnersMissingSubject > 0 && drawnEdges.length > 0 && (
+            <p class="mb-4 rounded-lg border border-amber bg-amber-tint px-3 py-2 text-xs leading-relaxed text-navy">
+              {partnersMissingSubject} {t('conn.undrawableBody')}
+            </p>
+          )}
           {jointProjects.length === 0 ? (
             <p class="py-6 text-center text-sm text-ink-muted">{t('conn.jointNone')}</p>
           ) : (

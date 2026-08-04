@@ -65,6 +65,8 @@ export interface ProjectDetailData {
     mime_type: string | null;
     url: string | null;
   }[];
+  /** This teacher's own offer on this project, if they have made one. */
+  myOffer: { message: string; subjectTag: string | null } | null;
   hasOfferedToCollaborate: boolean;
   isOwner: boolean;
   canEdit: boolean;
@@ -160,7 +162,7 @@ export async function loadProjectDetail(
       .eq("project_id", projectId),
     supabase
       .from("collaboration_requests")
-      .select("id")
+      .select("id, message, offered:grade_subjects(subject_slug, grade)")
       .eq("project_id", projectId)
       .eq("user_id", profile.id)
       .maybeSingle(),
@@ -194,6 +196,14 @@ export async function loadProjectDetail(
       grade: row.grade_subjects.grade,
     })),
     attachments: signed,
+    myOffer: myRequest
+      ? {
+          message: (myRequest as any).message ?? "",
+          subjectTag: (myRequest as any).offered
+            ? `${(myRequest as any).offered.subject_slug}@${(myRequest as any).offered.grade}`
+            : null,
+        }
+      : null,
     hasOfferedToCollaborate: Boolean(myRequest),
     isOwner,
     canEdit: isOwner || profile.role === "admin",
@@ -487,6 +497,12 @@ export interface ConnectionsData {
   untaggedSlugs: string[];
   /** Only populated in the confirmed view: the director's list. */
   jointProjects: JointProject[];
+  /**
+   * Accepted partners with no subject recorded. Their collaboration is real
+   * and appears in the list, but no line can be drawn for it — saying
+   * "none yet" while the list shows one would simply be untrue.
+   */
+  partnersMissingSubject: number;
   totalProjects: number;
   selectedGrades: Grade[];
 }
@@ -515,6 +531,7 @@ export async function loadConnections(
   let edges: SubjectConnection[] = [];
   let nodes: { slug: string; projectCount: number }[] = [];
   let jointProjects: JointProject[] = [];
+  let partnersMissingSubject = 0;
 
   if (view === "confirmed") {
     const [{ data: confirmed }, { data: joint }] = await Promise.all([
@@ -524,6 +541,10 @@ export async function loadConnections(
 
     edges = (confirmed ?? []) as SubjectConnection[];
     jointProjects = (joint ?? []) as JointProject[];
+    partnersMissingSubject = jointProjects.reduce(
+      (n, jp) => n + jp.partners.filter((partner) => !partner.subject).length,
+      0,
+    );
 
     // Node weight is derived from the confirmed edges themselves — a subject
     // is only on this map because a real pairing put it there.
@@ -568,6 +589,7 @@ export async function loadConnections(
     edges,
     untaggedSlugs,
     jointProjects,
+    partnersMissingSubject,
     totalProjects: count ?? 0,
     selectedGrades,
   });
