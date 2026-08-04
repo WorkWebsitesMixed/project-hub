@@ -1,0 +1,130 @@
+@import 'tailwindcss';
+
+/*
+ * Marymount School Medellín brand tokens.
+ *
+ * CONTRAST — measured against WCAG AA (4.5:1 for body text, 3:1 for large text
+ * and UI boundaries). These numbers decide how each colour may be used:
+ *
+ *   colour     on white   on navy      safe as text?
+ *   navy        17.49       1.00       yes, on white — this is the text colour
+ *   purple       7.96       2.20       yes, on white
+ *   magenta      4.42       3.96       large text / bold only, on white
+ *   orange       3.51       4.99       no on white; yes as a fill under navy text
+ *   cyan         2.67       6.55       no on white; yes as a fill under navy text
+ *   green        2.27       7.70       no on white; yes as a fill under navy text
+ *   amber        1.93       9.05       no on white; yes as a fill under navy text
+ *
+ * The rule that falls out: navy carries all text. Accents are FILLS — chips,
+ * bars, graph nodes, left-borders — always with navy text on top, never as
+ * coloured type on a white background. The `-tint` variants exist for exactly
+ * that: a pale wash that keeps navy text readable.
+ */
+
+@theme {
+  /* Primary */
+  --color-navy: #051937;
+  --color-navy-soft: #0a1c3e;
+
+  /* Accents — fills, not type */
+  --color-magenta: #e41c7c;
+  --color-purple: #822b86;
+  --color-cyan: #1eaade;
+  --color-orange: #ea5a27;
+  --color-green: #84bc41;
+  --color-amber: #f9ab19;
+
+  /* Pale washes for chip and card backgrounds. Navy text on these clears AA. */
+  --color-magenta-tint: #fdeaf3;
+  --color-purple-tint: #f3eaf4;
+  --color-cyan-tint: #e7f6fc;
+  --color-orange-tint: #fdeee7;
+  --color-green-tint: #f0f7e7;
+  --color-amber-tint: #fef5e3;
+
+  /* Neutrals derived from navy so greys never look muddy against it. */
+  --color-ink: #051937;
+  --color-ink-muted: #4a5a72;
+  --color-line: #dde3ec;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f6f8fb;
+
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius-card: 0.75rem;
+}
+
+/*
+ * Subject-family accents. Every subject belongs to one of six families
+ * (see src/lib/subjects.ts) and inherits its colour here, so a Physics chip
+ * looks the same everywhere it appears — filter panel, card, detail page,
+ * connection graph.
+ */
+@layer components {
+  .family-stem {
+    --family: var(--color-cyan);
+    --family-tint: var(--color-cyan-tint);
+  }
+  .family-humanities {
+    --family: var(--color-purple);
+    --family-tint: var(--color-purple-tint);
+  }
+  .family-languages {
+    --family: var(--color-magenta);
+    --family-tint: var(--color-magenta-tint);
+  }
+  .family-arts {
+    --family: var(--color-orange);
+    --family-tint: var(--color-orange-tint);
+  }
+  .family-applied {
+    --family: var(--color-green);
+    --family-tint: var(--color-green-tint);
+  }
+  .family-values {
+    --family: var(--color-amber);
+    --family-tint: var(--color-amber-tint);
+  }
+
+  /* A subject tag. Navy text on a pale family wash, with a saturated edge. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid
+      color-mix(in srgb, var(--family, var(--color-line)) 35%, transparent);
+    background: var(--family-tint, var(--color-surface-sunken));
+    color: var(--color-navy);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  /* Primary subject reads heavier than cross-disciplinary ones. */
+  .chip-primary {
+    font-weight: 600;
+    background: color-mix(in srgb, var(--family) 18%, white);
+    border-color: var(--family);
+  }
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus everywhere — this is a shared staff tool, keyboard use matters. */
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

@@ -1,0 +1,111 @@
+---
+import '../styles/global.css';
+import { getLocaleFromUrl, useTranslations, localizePath } from '../i18n/utils';
+import { LOCALE_NAMES, LOCALES } from '../i18n/ui';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+
+const pageTitle = title ? `${title} · ${t('site.title')}` : t('site.title');
+
+// Strip the current locale prefix so the language switcher stays on this page.
+const pathWithoutLocale = Astro.url.pathname.replace(
+  new RegExp(`^/(${LOCALES.join('|')})(?=/|$)`),
+  '',
+);
+
+const navLinks = [
+  { href: '/projects', label: t('nav.browse') },
+  { href: '/projects/new', label: t('nav.new') },
+  { href: '/dashboard', label: t('nav.dashboard') },
+];
+---
+
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description ?? t('site.description')} />
+    <!-- Internal staff tool: keep it out of search results. -->
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body class="min-h-screen flex flex-col">
+    <header class="border-b border-line bg-surface">
+      <div
+        class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3"
+      >
+        <a
+          href={localizePath('/', locale)}
+          class="flex items-center gap-3 shrink-0"
+        >
+          <img
+            src="/brand/marymount-logo.jpg"
+            alt="Marymount School Medellín"
+            width="1268"
+            height="412"
+            class="h-9 w-auto"
+          />
+        </a>
+
+        <nav class="flex flex-1 items-center gap-1 text-sm">
+          {
+            navLinks.map((link) => (
+              <a
+                href={localizePath(link.href, locale)}
+                class="rounded-md px-3 py-1.5 text-navy/80 transition hover:bg-surface-sunken hover:text-navy"
+              >
+                {link.label}
+              </a>
+            ))
+          }
+        </nav>
+
+        <div class="flex items-center gap-3">
+          <nav aria-label="Language" class="flex items-center gap-1 text-xs">
+            {
+              LOCALES.map((code) => (
+                <a
+                  href={localizePath(pathWithoutLocale || '/', code)}
+                  hreflang={code}
+                  aria-current={code === locale ? 'true' : undefined}
+                  class:list={[
+                    'rounded px-1.5 py-1 uppercase tracking-wide transition',
+                    code === locale
+                      ? 'bg-navy text-white'
+                      : 'text-ink-muted hover:bg-surface-sunken hover:text-navy',
+                  ]}
+                  title={LOCALE_NAMES[code]}
+                >
+                  {code}
+                </a>
+              ))
+            }
+          </nav>
+
+          <slot name="account" />
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+      <slot />
+    </main>
+
+    <footer class="border-t border-line bg-surface-sunken">
+      <div
+        class="mx-auto max-w-6xl px-4 py-6 text-xs text-ink-muted"
+      >
+        {t('site.tagline')}
+      </div>
+    </footer>
+  </body>
+</html>
