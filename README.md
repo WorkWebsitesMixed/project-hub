@@ -28,6 +28,27 @@ alone does **not** identify a teacher. Access has two gates:
    and can read nothing until an admin marks it `approved`. Row Level Security
    enforces this in the database, not in the UI.
 
+## Email notifications
+
+Collaboration offers and their answers can be emailed through Resend. The
+feature is **off unless `RESEND_API_KEY` is set** — without it every send
+returns quietly and the hub works in-app only, so it can ship before the
+school's sending domain is arranged.
+
+Sending is never fatal: the collaboration request is already committed by the
+time mail is attempted, so a provider outage or a bounced address is logged and
+swallowed behind a 5-second timeout rather than turning a successful click into
+an error page. Teachers can opt out from their dashboard.
+
+Messages are written in the **project's** language rather than a stored
+per-teacher preference: the owner wrote the project in that language, and the
+volunteer chose to offer help on it.
+
+| Variable | Notes |
+| --- | --- |
+| `RESEND_API_KEY` | Server-only. Absent = feature off. |
+| `EMAIL_FROM` | Needs a domain verified in Resend. `onboarding@resend.dev` only delivers to the Resend account owner. |
+
 ## Languages
 
 The interface ships in English, Spanish and French (`/`, `/es/`, `/fr/`).
@@ -61,6 +82,9 @@ Paste each into the Supabase SQL Editor, or run them with the Supabase CLI.
 | `0002_rls.sql` | Row Level Security policies and helper functions |
 | `0003_seed_subjects.sql` | Generated — 22 subjects, 50 grade pairs |
 | `0004_search_and_storage.sql` | `search_projects` RPC, connection graph, attachments bucket |
+| `0005_upsert_project.sql` | Atomic project write across three tables |
+| `0006_respond_to_collaboration.sql` | Accept/decline, granting or withdrawing membership |
+| `0007_graph_grade_filter_and_email_prefs.sql` | Grade filtering for the graph, email opt-out column |
 
 `npm run db:test` spins up a disposable Postgres (podman or docker), applies
 every migration and runs `supabase/tests/`, which asserts the things that would

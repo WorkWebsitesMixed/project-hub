@@ -143,6 +143,10 @@ export const ui = {
     'conn.tagged': 'projects tagged',
     'conn.gaps': 'Not yet on the board',
     'conn.gapsHint': 'These subjects have no projects tagged to them. Each one is a department nobody has reached out to yet.',
+    'dash.emailTitle': 'Email',
+    'dash.emailOn': 'Email me about collaboration',
+    'dash.emailHint': 'When a colleague offers to help, or answers your offer.',
+    'dash.emailSave': 'Save',
   },
   es: {
     'site.title': 'Project Hub',
@@ -269,6 +273,10 @@ export const ui = {
     'conn.tagged': 'proyectos etiquetados',
     'conn.gaps': 'Aún sin aparecer',
     'conn.gapsHint': 'Estas materias no tienen ningún proyecto etiquetado. Cada una es un departamento con el que nadie se ha conectado todavía.',
+    'dash.emailTitle': 'Correo',
+    'dash.emailOn': 'Avísame por correo sobre colaboraciones',
+    'dash.emailHint': 'Cuando alguien se ofrezca a ayudar, o responda a tu propuesta.',
+    'dash.emailSave': 'Guardar',
   },
   fr: {
     'site.title': 'Project Hub',
@@ -396,6 +404,10 @@ export const ui = {
     'conn.tagged': 'projets étiquetés',
     'conn.gaps': 'Pas encore sur le tableau',
     'conn.gapsHint': 'Ces matières n’ont aucun projet étiqueté. Chacune est un département que personne n’a encore sollicité.',
+    'dash.emailTitle': 'Courriel',
+    'dash.emailOn': 'M’avertir par courriel des collaborations',
+    'dash.emailHint': 'Quand un collègue propose son aide, ou répond à votre proposition.',
+    'dash.emailSave': 'Enregistrer',
   },
 } as const;
 

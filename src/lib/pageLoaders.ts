@@ -19,6 +19,7 @@ import type {
 import { SUBJECTS, type Grade, type ProjectStatus } from "./subjects";
 import type { Locale } from "../i18n/ui";
 import { localizePath } from "../i18n/utils";
+import { notifyCollaborationOffer, notifyCollaborationAnswer } from "./email";
 
 export type LoadResult<T> =
   { kind: "redirect"; to: string } | { kind: "ok"; data: T };
@@ -39,6 +40,9 @@ interface Ctx {
  * wrong returns HTTP 300 and no rows.
  */
 const OWNER_EMBED = "owner:profiles!projects_owner_id_fkey(full_name, email)";
+
+const OWNER_EMBED_NOTIFY =
+  "owner:profiles!projects_owner_id_fkey(full_name, email, email_notifications)";
 
 export interface ProjectDetailData {
   project: {
@@ -89,9 +93,32 @@ export async function loadProjectDetail(
       });
       // The unique (project_id, user_id) index makes the button idempotent —
       // a double click is not an error worth showing anyone.
-      if (error && !/duplicate|unique/i.test(error.message))
+      if (error && !/duplicate|unique/i.test(error.message)) {
         actionError = error.message;
-      else return redirectTo(ctx.url.pathname);
+      } else {
+        // Only on a genuinely new offer — a double click must not send a
+        // second email.
+        if (!error) {
+          const { data: target } = await supabase
+            .from("projects")
+            .select(`title, language, ${OWNER_EMBED_NOTIFY}`)
+            .eq("id", projectId)
+            .maybeSingle();
+          const owner = (target as any)?.owner;
+          if (owner?.email && owner.email_notifications) {
+            await notifyCollaborationOffer({
+              to: owner.email,
+              requesterName: profile.full_name ?? profile.email,
+              projectTitle: (target as any).title,
+              projectId,
+              message: String(form.get("message") ?? "").slice(0, 1000),
+              language: (target as any).language as Locale,
+              origin: ctx.url.origin,
+            });
+          }
+        }
+        return redirectTo(ctx.url.pathname);
+      }
     }
 
     if (action === "delete") {
@@ -310,7 +337,7 @@ export interface DashboardData {
   received: {
     id: string;
     message: string;
-    status: 'interested' | 'accepted' | 'declined';
+    status: "interested" | "accepted" | "declined";
     created_at: string;
     project: { id: string; title: string } | null;
     requester: { full_name: string | null; email: string | null } | null;
@@ -318,9 +345,10 @@ export interface DashboardData {
   /** Offers this teacher has made on other people's projects. */
   sent: {
     id: string;
-    status: 'interested' | 'accepted' | 'declined';
+    status: "interested" | "accepted" | "declined";
     project: { id: string; title: string } | null;
   }[];
+  emailNotifications: boolean;
   error: string | null;
 }
 
@@ -329,49 +357,88 @@ export async function loadDashboard(
   locale: Locale,
 ): Promise<LoadResult<DashboardData>> {
   const { supabase, profile } = ctx.locals;
-  if (!profile) return redirectTo(localizePath('/', locale));
+  if (!profile) return redirectTo(localizePath("/", locale));
 
   let error: string | null = null;
 
-  if (ctx.request.method === 'POST') {
+  if (ctx.request.method === "POST") {
     const form = await ctx.request.formData();
-    if (String(form.get('action')) === 'respond') {
+    if (String(form.get("action")) === "email_prefs") {
+      // profiles_update_self allows this; the privilege guard trigger only
+      // blocks changes to status and role.
+      const { error: prefError } = await supabase
+        .from("profiles")
+        .update({ email_notifications: form.get("enabled") === "on" })
+        .eq("id", profile.id);
+      if (prefError) error = prefError.message;
+      else return redirectTo(ctx.url.pathname);
+    }
+
+    if (String(form.get("action")) === "respond") {
       // One RPC flips the request status and grants or withdraws the
       // project_members row together — an accepted request must never exist
       // without the membership that actually gives the colleague access.
-      const { error: rpcError } = await supabase.rpc('respond_to_collaboration', {
-        p_request_id: String(form.get('request_id') ?? ''),
-        p_accept: form.get('decision') === 'accept',
-      });
-      if (rpcError) error = rpcError.message;
-      else return redirectTo(ctx.url.pathname);
+      const requestId = String(form.get("request_id") ?? "");
+      const accepted = form.get("decision") === "accept";
+      const { error: rpcError } = await supabase.rpc(
+        "respond_to_collaboration",
+        { p_request_id: requestId, p_accept: accepted },
+      );
+      if (rpcError) {
+        error = rpcError.message;
+      } else {
+        const { data: answered } = await supabase
+          .from("collaboration_requests")
+          .select(
+            "projects(id, title, language), profiles(full_name, email, email_notifications)",
+          )
+          .eq("id", requestId)
+          .maybeSingle();
+        const volunteer = (answered as any)?.profiles;
+        const project = (answered as any)?.projects;
+        if (volunteer?.email && volunteer.email_notifications && project) {
+          await notifyCollaborationAnswer({
+            to: volunteer.email,
+            ownerName: profile.full_name ?? profile.email,
+            projectTitle: project.title,
+            projectId: project.id,
+            accepted,
+            language: project.language as Locale,
+            origin: ctx.url.origin,
+          });
+        }
+        return redirectTo(ctx.url.pathname);
+      }
     }
   }
 
-  const [{ data: myProjects }, { data: received }, { data: sent }] = await Promise.all([
-    supabase
-      .from('projects')
-      .select('id, title, status, updated_at')
-      .eq('owner_id', profile.id)
-      .order('updated_at', { ascending: false }),
+  const [{ data: myProjects }, { data: received }, { data: sent }] =
+    await Promise.all([
+      supabase
+        .from("projects")
+        .select("id, title, status, updated_at")
+        .eq("owner_id", profile.id)
+        .order("updated_at", { ascending: false }),
 
-    // RLS policy `collab_select_project_side` is what scopes this to projects
-    // this teacher may edit; the .neq keeps their own offers out of the inbox.
-    supabase
-      .from('collaboration_requests')
-      .select('id, message, status, created_at, projects(id, title), profiles(full_name, email)')
-      .neq('user_id', profile.id)
-      .order('created_at', { ascending: false }),
+      // RLS policy `collab_select_project_side` is what scopes this to projects
+      // this teacher may edit; the .neq keeps their own offers out of the inbox.
+      supabase
+        .from("collaboration_requests")
+        .select(
+          "id, message, status, created_at, projects(id, title), profiles(full_name, email)",
+        )
+        .neq("user_id", profile.id)
+        .order("created_at", { ascending: false }),
 
-    supabase
-      .from('collaboration_requests')
-      .select('id, status, projects(id, title)')
-      .eq('user_id', profile.id)
-      .order('created_at', { ascending: false }),
-  ]);
+      supabase
+        .from("collaboration_requests")
+        .select("id, status, projects(id, title)")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false }),
+    ]);
 
   return ok({
-    myProjects: (myProjects ?? []) as DashboardData['myProjects'],
+    myProjects: (myProjects ?? []) as DashboardData["myProjects"],
     received: (received ?? []).map((r: any) => ({
       id: r.id,
       message: r.message,
@@ -385,52 +452,60 @@ export async function loadDashboard(
       status: r.status,
       project: r.projects ?? null,
     })),
+    emailNotifications: profile.email_notifications ?? true,
     error,
   });
 }
 
 export interface ConnectionsData {
-  /** Subjects that appear on at least one project, with how many projects. */
+  /** Subjects that appear on at least one matching project, with how many. */
   nodes: { slug: string; projectCount: number }[];
   /** Subject pairs that share a project, with how many they share. */
   edges: SubjectConnection[];
   /** Subjects nobody has tagged yet — the gaps worth noticing. */
   untaggedSlugs: string[];
   totalProjects: number;
+  selectedGrades: Grade[];
 }
 
-export async function loadConnections(ctx: Ctx): Promise<LoadResult<ConnectionsData>> {
+export async function loadConnections(
+  ctx: Ctx,
+): Promise<LoadResult<ConnectionsData>> {
   const { supabase } = ctx.locals;
 
-  const [{ data: edges }, { data: tagRows }, { count }] = await Promise.all([
-    supabase.rpc('subject_connections'),
-    // RLS filters both of these, so the graph only ever draws what this
-    // teacher is allowed to see.
-    supabase.from('project_subjects').select('project_id, grade_subjects(subject_slug)'),
-    supabase.from('projects').select('id', { count: 'exact', head: true }),
+  // Grade lives in the URL, exactly as it does on the browse page, so a
+  // filtered graph is a link you can send someone.
+  const selectedGrades = ctx.url.searchParams
+    .getAll("grade")
+    .map(Number)
+    .filter((g): g is Grade => g === 10 || g === 11 || g === 12);
+
+  const gradeArg = selectedGrades.length > 0 ? selectedGrades : null;
+
+  // Both RPCs are SECURITY INVOKER, so RLS still decides what this teacher
+  // may see; the graph can never draw a project they cannot open.
+  const [{ data: edges }, { data: usage }, { count }] = await Promise.all([
+    supabase.rpc("subject_connections", { p_grades: gradeArg }),
+    supabase.rpc("subject_usage", { p_grades: gradeArg }),
+    supabase.from("projects").select("id", { count: "exact", head: true }),
   ]);
 
-  // A subject tagged at two different grades on the same project is still one
-  // project for that subject, so count distinct project ids rather than rows.
-  const projectsBySubject = new Map<string, Set<string>>();
-  for (const row of (tagRows ?? []) as any[]) {
-    const slug = row.grade_subjects?.subject_slug;
-    if (!slug) continue;
-    if (!projectsBySubject.has(slug)) projectsBySubject.set(slug, new Set());
-    projectsBySubject.get(slug)!.add(row.project_id);
-  }
-
-  const nodes = [...projectsBySubject.entries()]
-    .map(([slug, projects]) => ({ slug, projectCount: projects.size }))
+  const nodes = (
+    (usage ?? []) as { subject_slug: string; project_count: number }[]
+  )
+    .map((row) => ({ slug: row.subject_slug, projectCount: row.project_count }))
     .sort((a, b) => b.projectCount - a.projectCount);
 
   const tagged = new Set(nodes.map((n) => n.slug));
-  const untaggedSlugs = SUBJECTS.map((s) => s.slug).filter((slug) => !tagged.has(slug));
+  const untaggedSlugs = SUBJECTS.map((s) => s.slug).filter(
+    (slug) => !tagged.has(slug),
+  );
 
   return ok({
     nodes,
     edges: (edges ?? []) as SubjectConnection[],
     untaggedSlugs,
     totalProjects: count ?? 0,
+    selectedGrades,
   });
 }

@@ -423,4 +423,54 @@ begin
   end if;
 end $$;
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Graph grade filtering
+-- ─────────────────────────────────────────────────────────────────────────────
+
+do $$
+declare all_pairs int; g11 int; g12 int; g10 int; usage_all int; usage_11 int;
+begin
+  select count(*) into all_pairs from public.subject_connections();
+  select count(*) into g11 from public.subject_connections(array[11]::smallint[]);
+  select count(*) into g12 from public.subject_connections(array[12]::smallint[]);
+  select count(*) into g10 from public.subject_connections(array[10]::smallint[]);
+
+  -- Project 1 targets grade 11 and links 3 subjects (3 pairs); the choir
+  -- project also targets 11 and 12. Project 2 targets grade 12, 1 pair.
+  -- Nothing targets grade 10.
+  if g10 = 0 and g11 > 0 and g12 > 0 and all_pairs >= g11 then
+    raise notice 'PASS  subject_connections filters by target grade (10:%, 11:%, 12:%, all:%)',
+      g10, g11, g12, all_pairs;
+  else
+    raise notice 'FAIL  grade filter: 10=%, 11=%, 12=%, all=%', g10, g11, g12, all_pairs;
+  end if;
+
+  -- A grade-11 project tagged into 12th-grade Calculus must keep that edge:
+  -- erasing it would hide exactly the cross-grade reach the graph is for.
+  if exists (
+    select 1 from public.subject_connections(array[11]::smallint[])
+    where 'calculus' in (source_slug, target_slug)
+  ) then
+    raise notice 'PASS  cross-grade edges survive the grade filter';
+  else
+    raise notice 'FAIL  filtering to grade 11 dropped the calculus edge';
+  end if;
+
+  select count(*) into usage_all from public.subject_usage();
+  select count(*) into usage_11 from public.subject_usage(array[11]::smallint[]);
+  if usage_all > 0 and usage_11 > 0 and usage_11 <= usage_all then
+    raise notice 'PASS  subject_usage returns node weights (all:%, g11:%)', usage_all, usage_11;
+  else
+    raise notice 'FAIL  subject_usage: all=%, g11=%', usage_all, usage_11;
+  end if;
+end $$;
+
+do $$ declare v boolean; begin
+  select email_notifications into v from public.profiles
+   where email = 'ana@marymount.edu.co';
+  if v then raise notice 'PASS  email notifications default to on';
+  else raise notice 'FAIL  email_notifications defaulted to %', v; end if;
+end $$;
+
 reset role;

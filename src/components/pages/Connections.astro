@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
-import { SUBJECTS, FAMILIES, subjectBySlug, type Family } from '../../lib/subjects';
+import { SUBJECTS, GRADES, FAMILIES, subjectBySlug, type Family } from '../../lib/subjects';
 import type { ConnectionsData } from '../../lib/pageLoaders';
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 }
 
 const { data } = Astro.props;
-const { nodes, edges, untaggedSlugs, totalProjects } = data;
+const { nodes, edges, untaggedSlugs, totalProjects, selectedGrades } = data;
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
@@ -86,8 +86,13 @@ const untagged = untaggedSlugs
   .map((slug) => subjectBySlug(slug))
   .filter((s): s is NonNullable<typeof s> => Boolean(s));
 
+const gradeQuery = selectedGrades.map((g) => `grade=${g}`).join('&');
+
+// Carry the grade filter through to the browse page, so clicking a subject
+// keeps the question the teacher was asking.
 const subjectHref = (slug: string) =>
-  `${localizePath('/projects', locale)}?subject=${encodeURIComponent(slug)}`;
+  `${localizePath('/projects', locale)}?subject=${encodeURIComponent(slug)}` +
+  (gradeQuery ? `&${gradeQuery}` : '');
 ---
 
 <Layout title={t('conn.title')}>
@@ -101,6 +106,50 @@ const subjectHref = (slug: string) =>
   </div>
 
   <p class="mt-2 max-w-2xl leading-relaxed text-ink-muted">{t('conn.intro')}</p>
+
+  <!--
+    Grade filter. Matches on the project's target grade, the same meaning the
+    checkboxes carry on the browse page. Cross-grade lines are kept: filtering
+    to Grade 11 still shows the reach out to 12th-grade Calculus, because that
+    edge belongs to an 11th-grade project.
+  -->
+  <form method="GET" class="mt-6 flex flex-wrap items-center gap-2">
+    <span class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+      {t('filter.grade')}
+    </span>
+    {
+      GRADES.map((grade) => (
+        <label class="cursor-pointer">
+          <input
+            type="checkbox"
+            name="grade"
+            value={grade}
+            checked={selectedGrades.includes(grade)}
+            class="peer sr-only"
+          />
+          <span class="chip peer-checked:bg-navy peer-checked:font-semibold peer-checked:text-white">
+            {grade}
+          </span>
+        </label>
+      ))
+    }
+    <button
+      type="submit"
+      class="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-navy transition hover:bg-surface-sunken"
+    >
+      {t('browse.apply')}
+    </button>
+    {
+      selectedGrades.length > 0 && (
+        <a
+          href={localizePath('/connections', locale)}
+          class="text-xs text-ink-muted transition hover:text-navy"
+        >
+          {t('filter.clear')}
+        </a>
+      )
+    }
+  </form>
 
   {
     drawnEdges.length === 0 ? (

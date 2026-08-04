@@ -23,6 +23,8 @@ export interface Profile {
   department: string | null;
   status: ProfileStatus;
   role: AppRole;
+  /** Opt-out for collaboration emails. */
+  email_notifications: boolean;
   created_at: string;
   updated_at: string;
 }
