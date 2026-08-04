@@ -1,63 +1,20 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations } from '../../i18n/utils';
-import type { Profile } from '../../lib/database.types';
+import type { ApprovalsData } from '../../lib/pageLoaders';
+
+interface Props {
+  data: ApprovalsData;
+}
+
+// Pure renderer. The approve/reject handling and the post-action redirect live
+// in loadApprovals(); a redirect returned from a component never fires.
+const { data } = Astro.props;
+const { pending: pendingList, approved: approvedList, error } = data;
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
-
-const { supabase, profile } = Astro.locals;
-
-let error: string | null = null;
-
-// The middleware has already refused non-admins, and the RLS policy
-// `profiles_update_admin` refuses them again at the database. This handler is
-// the third layer, not the only one.
-if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData();
-  const targetId = String(form.get('user_id') ?? '');
-  const action = String(form.get('action') ?? '');
-
-  const patch: Partial<Pick<Profile, 'status' | 'role'>> | null =
-    action === 'approve'
-      ? { status: 'approved' }
-      : action === 'reject'
-        ? { status: 'rejected' }
-        : action === 'make_admin'
-          ? { role: 'admin' }
-          : action === 'revoke'
-            ? { status: 'rejected', role: 'teacher' }
-            : null;
-
-  if (!targetId || !patch) {
-    error = 'Unrecognised action.';
-  } else if (targetId === profile!.id) {
-    // Removing your own admin rights could leave the hub with no administrator.
-    error = 'You cannot change your own access from this screen.';
-  } else {
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update(patch)
-      .eq('id', targetId);
-    if (updateError) error = updateError.message;
-    else return Astro.redirect(Astro.url.pathname);
-  }
-}
-
-const { data: pending } = await supabase
-  .from('profiles')
-  .select('*')
-  .eq('status', 'pending')
-  .order('created_at', { ascending: true });
-
-const { data: approved } = await supabase
-  .from('profiles')
-  .select('*')
-  .eq('status', 'approved')
-  .order('full_name', { ascending: true });
-
-const pendingList = (pending ?? []) as Profile[];
-const approvedList = (approved ?? []) as Profile[];
+const { profile } = Astro.locals;
 ---
 
 <Layout title={t('admin.title')}>

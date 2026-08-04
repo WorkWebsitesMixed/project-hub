@@ -2,103 +2,44 @@
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
 import { STATUS_LABELS, subjectBySlug } from '../../lib/subjects';
-import type { ProjectStatus } from '../../lib/subjects';
+import type { ProjectDetailData } from '../../lib/pageLoaders';
 
 interface Props {
-  projectId: string;
+  data: ProjectDetailData;
 }
 
-const { projectId } = Astro.props;
+// Pure renderer. All loading, form handling and redirecting happens in
+// loadProjectDetail() and is acted on by the page wrapper — a component cannot
+// perform a redirect, and silently failing to do so is what produced a blank
+// page here before.
+const { data } = Astro.props;
+const {
+  project,
+  owner,
+  grades,
+  tags,
+  attachments,
+  hasOfferedToCollaborate,
+  isOwner,
+  canEdit,
+  actionError,
+} = data;
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
-const { supabase, profile } = Astro.locals;
 
-// Handle the collaborate button and the owner's delete action before rendering.
-let actionError: string | null = null;
-
-if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData();
-  const action = String(form.get('action') ?? '');
-
-  if (action === 'collaborate') {
-    const { error } = await supabase.from('collaboration_requests').insert({
-      project_id: projectId,
-      user_id: profile!.id,
-      message: String(form.get('message') ?? '').slice(0, 1000),
-    });
-    // The unique (project_id, user_id) index makes the button idempotent —
-    // a double click is not an error worth showing.
-    if (error && !error.message.includes('duplicate')) actionError = error.message;
-    else return Astro.redirect(Astro.url.pathname);
-  }
-
-  if (action === 'delete') {
-    const { error } = await supabase.from('projects').delete().eq('id', projectId);
-    if (error) actionError = error.message;
-    else return Astro.redirect(localizePath('/dashboard', locale));
-  }
-}
-
-const { data: project } = await supabase
-  .from('projects')
-  .select(
-    'id, title, description, status, duration, resources, language, created_at, owner_id, profiles(full_name, email)',
-  )
-  .eq('id', projectId)
-  .maybeSingle();
-
-// RLS hides projects this teacher may not see; a missing row and a forbidden
-// row look the same on purpose.
-if (!project) return Astro.redirect(localizePath('/projects', locale));
-
-const [{ data: grades }, { data: tags }, { data: attachments }, { data: myRequest }] =
-  await Promise.all([
-    supabase.from('project_grades').select('grade').eq('project_id', projectId),
-    supabase
-      .from('project_subjects')
-      .select('role, grade_subjects(subject_slug, grade)')
-      .eq('project_id', projectId),
-    supabase
-      .from('project_attachments')
-      .select('id, storage_path, file_name, mime_type')
-      .eq('project_id', projectId),
-    supabase
-      .from('collaboration_requests')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', profile!.id)
-      .maybeSingle(),
-  ]);
-
-const chips = (tags ?? []).map((row: any) => {
-  const slug = row.grade_subjects.subject_slug;
-  const subject = subjectBySlug(slug);
+const chips = tags.map((tag) => {
+  const subject = subjectBySlug(tag.slug);
   return {
-    role: row.role as 'primary' | 'cross',
-    grade: row.grade_subjects.grade as number,
+    role: tag.role,
+    grade: tag.grade,
     family: subject?.family ?? 'stem',
-    name: subject ? localized(subject.name, locale) : slug,
+    name: subject ? localized(subject.name, locale) : tag.slug,
   };
 });
 
 const primaryChips = chips.filter((c) => c.role === 'primary');
 const crossChips = chips.filter((c) => c.role === 'cross');
-
-const owner = (project as any).profiles;
-const isOwner = project.owner_id === profile!.id;
-const canEdit = isOwner || profile!.role === 'admin';
-
-// The bucket is private, so links have to be signed. One hour is plenty for
-// someone reading a project page.
-const signedAttachments = await Promise.all(
-  (attachments ?? []).map(async (file) => {
-    const { data } = await supabase.storage
-      .from('project-files')
-      .createSignedUrl(file.storage_path, 3600);
-    return { ...file, url: data?.signedUrl ?? null };
-  }),
-);
 ---
 
 <Layout title={project.title} description={project.description.slice(0, 160)}>
@@ -120,14 +61,8 @@ const signedAttachments = await Promise.all(
   <article class="mt-4 grid gap-10 lg:grid-cols-3">
     <div class="lg:col-span-2">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="chip tone-cyan">{STATUS_LABELS[project.status as ProjectStatus][locale]}</span>
-        {
-          (grades ?? []).map((g) => (
-            <span class="chip">
-              {t('form.grade')} {g.grade}
-            </span>
-          ))
-        }
+        <span class="chip tone-cyan">{STATUS_LABELS[project.status][locale]}</span>
+        {grades.map((g) => <span class="chip">{t('form.grade')} {g}</span>)}
         {
           project.language !== locale && (
             <span class="chip tone-amber">{project.language.toUpperCase()}</span>
@@ -153,13 +88,13 @@ const signedAttachments = await Promise.all(
       }
 
       {
-        signedAttachments.length > 0 && (
+        attachments.length > 0 && (
           <section class="mt-8">
             <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
               {t('project.attachments')}
             </h2>
             <ul class="mt-3 grid gap-3 sm:grid-cols-2">
-              {signedAttachments.map((file) => (
+              {attachments.map((file) => (
                 <li class="overflow-hidden rounded-card border border-line">
                   {file.mime_type?.startsWith('image/') && file.url ? (
                     <a href={file.url} target="_blank" rel="noopener">
@@ -242,7 +177,7 @@ const signedAttachments = await Promise.all(
         {
           isOwner ? (
             <p class="text-sm text-ink-muted">{t('project.ownProject')}</p>
-          ) : myRequest ? (
+          ) : hasOfferedToCollaborate ? (
             <p class="text-sm font-medium text-navy">✓ {t('project.collabAlready')}</p>
           ) : (
             <form method="POST" class="space-y-3">
@@ -273,7 +208,10 @@ const signedAttachments = await Promise.all(
             >
               {t('project.edit')}
             </a>
-            <form method="POST" onsubmit={`return confirm(${JSON.stringify(t('project.deleteConfirm'))})`}>
+            <form
+              method="POST"
+              onsubmit={`return confirm(${JSON.stringify(t('project.deleteConfirm'))})`}
+            >
               <input type="hidden" name="action" value="delete" />
               <button
                 type="submit"

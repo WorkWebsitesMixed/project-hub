@@ -1,6 +1,16 @@
 ---
-import ProjectDetail from "../../components/pages/ProjectDetail.astro";
-const { id } = Astro.params;
+import ProjectDetail from '../../components/pages/ProjectDetail.astro';
+import { loadProjectDetail } from '../../lib/pageLoaders';
+import { getLocaleFromUrl } from '../../i18n/utils';
+
+const locale = getLocaleFromUrl(Astro.url);
+const result = await loadProjectDetail(Astro, Astro.params.id!, locale);
+// Redirects must be returned from the page, not from a component.
+if (result.kind === 'redirect') return Astro.redirect(result.to);
+
+// Narrowing does not cross from the frontmatter into the template,
+// so pull the data out here where TypeScript can still see the guard.
+const { data } = result;
 ---
 
-<ProjectDetail projectId={id!} />
+<ProjectDetail data={data} />

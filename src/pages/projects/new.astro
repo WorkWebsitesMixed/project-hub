@@ -1,5 +1,15 @@
 ---
-import ProjectEditor from "../../components/pages/ProjectEditor.astro";
+import ProjectEditor from '../../components/pages/ProjectEditor.astro';
+import { loadProjectEditor } from '../../lib/pageLoaders';
+import { getLocaleFromUrl } from '../../i18n/utils';
+
+const locale = getLocaleFromUrl(Astro.url);
+const result = await loadProjectEditor(Astro, undefined, locale);
+if (result.kind === 'redirect') return Astro.redirect(result.to);
+
+// Narrowing does not cross from the frontmatter into the template,
+// so pull the data out here where TypeScript can still see the guard.
+const { data } = result;
 ---
 
-<ProjectEditor />
+<ProjectEditor data={data} />

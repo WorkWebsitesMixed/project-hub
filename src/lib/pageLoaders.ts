@@ -1,0 +1,296 @@
+/**
+ * Data loading and form handling for the project pages.
+ *
+ * Why this lives outside the .astro components: `Astro.redirect()` only
+ * performs a redirect when it is returned from a **page**. Returned from a
+ * nested component it is just a value Astro renders as nothing — which is how
+ * a failed lookup turned into a blank white screen instead of a redirect.
+ *
+ * So loaders return a discriminated `{ kind: 'redirect' }` or `{ kind: 'ok' }`,
+ * the thin page wrappers act on the redirect, and the components became pure
+ * renderers that cannot silently swallow a response.
+ */
+
+import type { Profile, ProfileStatus } from "./database.types";
+import type { Grade, ProjectStatus } from "./subjects";
+import type { Locale } from "../i18n/ui";
+import { localizePath } from "../i18n/utils";
+
+export type LoadResult<T> =
+  { kind: "redirect"; to: string } | { kind: "ok"; data: T };
+
+const redirectTo = (to: string) => ({ kind: "redirect" as const, to });
+const ok = <T>(data: T) => ({ kind: "ok" as const, data });
+
+interface Ctx {
+  request: Request;
+  url: URL;
+  locals: App.Locals;
+}
+
+/**
+ * `projects` and `profiles` have more than one relationship — the owner_id
+ * foreign key, and a many-to-many through project_members. PostgREST refuses
+ * to guess (PGRST201), so the constraint name has to be explicit. Getting this
+ * wrong returns HTTP 300 and no rows.
+ */
+const OWNER_EMBED = "owner:profiles!projects_owner_id_fkey(full_name, email)";
+
+export interface ProjectDetailData {
+  project: {
+    id: string;
+    title: string;
+    description: string;
+    status: ProjectStatus;
+    duration: string;
+    resources: string;
+    language: Locale;
+    created_at: string;
+    owner_id: string;
+  };
+  owner: { full_name: string | null; email: string | null } | null;
+  grades: Grade[];
+  tags: { role: "primary" | "cross"; slug: string; grade: number }[];
+  attachments: {
+    id: string;
+    file_name: string;
+    mime_type: string | null;
+    url: string | null;
+  }[];
+  hasOfferedToCollaborate: boolean;
+  isOwner: boolean;
+  canEdit: boolean;
+  actionError: string | null;
+}
+
+export async function loadProjectDetail(
+  ctx: Ctx,
+  projectId: string,
+  locale: Locale,
+): Promise<LoadResult<ProjectDetailData>> {
+  const { supabase, profile } = ctx.locals;
+  if (!profile) return redirectTo(localizePath("/", locale));
+
+  let actionError: string | null = null;
+
+  if (ctx.request.method === "POST") {
+    const form = await ctx.request.formData();
+    const action = String(form.get("action") ?? "");
+
+    if (action === "collaborate") {
+      const { error } = await supabase.from("collaboration_requests").insert({
+        project_id: projectId,
+        user_id: profile.id,
+        message: String(form.get("message") ?? "").slice(0, 1000),
+      });
+      // The unique (project_id, user_id) index makes the button idempotent —
+      // a double click is not an error worth showing anyone.
+      if (error && !/duplicate|unique/i.test(error.message))
+        actionError = error.message;
+      else return redirectTo(ctx.url.pathname);
+    }
+
+    if (action === "delete") {
+      const { error } = await supabase
+        .from("projects")
+        .delete()
+        .eq("id", projectId);
+      if (error) actionError = error.message;
+      else return redirectTo(localizePath("/dashboard", locale));
+    }
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select(
+      `id, title, description, status, duration, resources, language, created_at, owner_id, ${OWNER_EMBED}`,
+    )
+    .eq("id", projectId)
+    .maybeSingle();
+
+  // RLS hides projects this teacher may not see. A missing project and a
+  // forbidden one look identical on purpose.
+  if (!project) return redirectTo(localizePath("/projects", locale));
+
+  const [
+    { data: grades },
+    { data: tags },
+    { data: attachments },
+    { data: myRequest },
+  ] = await Promise.all([
+    supabase.from("project_grades").select("grade").eq("project_id", projectId),
+    supabase
+      .from("project_subjects")
+      .select("role, grade_subjects(subject_slug, grade)")
+      .eq("project_id", projectId),
+    supabase
+      .from("project_attachments")
+      .select("id, storage_path, file_name, mime_type")
+      .eq("project_id", projectId),
+    supabase
+      .from("collaboration_requests")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("user_id", profile.id)
+      .maybeSingle(),
+  ]);
+
+  // The bucket is private, so every link has to be signed. An hour is plenty
+  // for someone reading a project page.
+  const signed = await Promise.all(
+    (attachments ?? []).map(async (file) => {
+      const { data } = await supabase.storage
+        .from("project-files")
+        .createSignedUrl(file.storage_path, 3600);
+      return {
+        id: file.id,
+        file_name: file.file_name,
+        mime_type: file.mime_type,
+        url: data?.signedUrl ?? null,
+      };
+    }),
+  );
+
+  const isOwner = project.owner_id === profile.id;
+
+  return ok({
+    project: project as ProjectDetailData["project"],
+    owner: (project as any).owner ?? null,
+    grades: (grades ?? []).map((g) => g.grade as Grade),
+    tags: (tags ?? []).map((row: any) => ({
+      role: row.role,
+      slug: row.grade_subjects.subject_slug,
+      grade: row.grade_subjects.grade,
+    })),
+    attachments: signed,
+    hasOfferedToCollaborate: Boolean(myRequest),
+    isOwner,
+    canEdit: isOwner || profile.role === "admin",
+    actionError,
+  });
+}
+
+export interface ProjectEditorData {
+  initial?: {
+    id: string;
+    title: string;
+    description: string;
+    status: ProjectStatus;
+    duration: string;
+    resources: string;
+    language: Locale;
+    grades: Grade[];
+    primarySubject: string | null;
+    crossSubjects: string[];
+  };
+}
+
+export async function loadProjectEditor(
+  ctx: Ctx,
+  projectId: string | undefined,
+  locale: Locale,
+): Promise<LoadResult<ProjectEditorData>> {
+  if (!projectId) return ok({});
+
+  const { supabase } = ctx.locals;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, title, description, status, duration, resources, language")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (!project) return redirectTo(localizePath("/dashboard", locale));
+
+  const [{ data: grades }, { data: tags }] = await Promise.all([
+    supabase.from("project_grades").select("grade").eq("project_id", projectId),
+    supabase
+      .from("project_subjects")
+      .select("role, grade_subjects(subject_slug, grade)")
+      .eq("project_id", projectId),
+  ]);
+
+  const toTag = (row: any) =>
+    `${row.grade_subjects.subject_slug}@${row.grade_subjects.grade}`;
+  const primaryRow = (tags ?? []).find((r: any) => r.role === "primary");
+
+  return ok({
+    initial: {
+      id: project.id,
+      title: project.title,
+      description: project.description,
+      status: project.status as ProjectStatus,
+      duration: project.duration,
+      resources: project.resources,
+      language: project.language as Locale,
+      grades: (grades ?? []).map((g) => g.grade as Grade),
+      primarySubject: primaryRow ? toTag(primaryRow) : null,
+      crossSubjects: (tags ?? [])
+        .filter((r: any) => r.role === "cross")
+        .map(toTag),
+    },
+  });
+}
+
+export interface ApprovalsData {
+  pending: Profile[];
+  approved: Profile[];
+  error: string | null;
+}
+
+export async function loadApprovals(
+  ctx: Ctx,
+): Promise<LoadResult<ApprovalsData>> {
+  const { supabase, profile } = ctx.locals;
+  let error: string | null = null;
+
+  if (ctx.request.method === "POST") {
+    const form = await ctx.request.formData();
+    const targetId = String(form.get("user_id") ?? "");
+    const action = String(form.get("action") ?? "");
+
+    const patch: { status?: ProfileStatus; role?: "teacher" | "admin" } | null =
+      action === "approve"
+        ? { status: "approved" }
+        : action === "reject"
+          ? { status: "rejected" }
+          : action === "make_admin"
+            ? { role: "admin" }
+            : action === "revoke"
+              ? { status: "rejected", role: "teacher" }
+              : null;
+
+    if (!targetId || !patch) {
+      error = "Unrecognised action.";
+    } else if (targetId === profile!.id) {
+      // Revoking your own access could leave the hub with no administrator.
+      error = "You cannot change your own access from this screen.";
+    } else {
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update(patch)
+        .eq("id", targetId);
+      if (updateError) error = updateError.message;
+      else return redirectTo(ctx.url.pathname);
+    }
+  }
+
+  const [{ data: pending }, { data: approved }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("status", "approved")
+      .order("full_name", { ascending: true }),
+  ]);
+
+  return ok({
+    pending: (pending ?? []) as Profile[],
+    approved: (approved ?? []) as Profile[],
+    error,
+  });
+}

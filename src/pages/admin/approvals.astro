@@ -1,5 +1,13 @@
 ---
-import AdminApprovals from "../../components/pages/AdminApprovals.astro";
+import AdminApprovals from '../../components/pages/AdminApprovals.astro';
+import { loadApprovals } from '../../lib/pageLoaders';
+
+const result = await loadApprovals(Astro);
+if (result.kind === 'redirect') return Astro.redirect(result.to);
+
+// Narrowing does not cross from the frontmatter into the template,
+// so pull the data out here where TypeScript can still see the guard.
+const { data } = result;
 ---
 
-<AdminApprovals />
+<AdminApprovals data={data} />
