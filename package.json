@@ -10,7 +10,9 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "check": "astro check"
+    "check": "astro check",
+    "seed:generate": "node --experimental-strip-types scripts/generate-seed.ts",
+    "db:test": "bash scripts/test-db.sh"
   },
   "dependencies": {
     "@astrojs/react": "^6.0.2",

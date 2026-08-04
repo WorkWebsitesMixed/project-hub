@@ -47,6 +47,27 @@ npm run dev
 | `npm run dev` | Dev server on http://localhost:4321 |
 | `npm run build` | Production build |
 | `npm run check` | Astro + TypeScript diagnostics |
+| `npm run db:test` | Apply migrations to a throwaway Postgres and run the schema tests |
+| `npm run seed:generate` | Rebuild the subject seed SQL from `src/lib/subjects.ts` |
+
+## Database
+
+Migrations live in `supabase/migrations/` and are applied **in filename order**.
+Paste each into the Supabase SQL Editor, or run them with the Supabase CLI.
+
+| File | Contents |
+| --- | --- |
+| `0001_schema.sql` | Tables, enums, indexes, triggers |
+| `0002_rls.sql` | Row Level Security policies and helper functions |
+| `0003_seed_subjects.sql` | Generated — 22 subjects, 50 grade pairs |
+| `0004_search_and_storage.sql` | `search_projects` RPC, connection graph, attachments bucket |
+
+`npm run db:test` spins up a disposable Postgres (podman or docker), applies
+every migration and runs `supabase/tests/`, which asserts the things that would
+be expensive to get wrong: outside-domain sign-ins are rejected, new accounts
+land as `pending` and can read nothing, a pending account cannot approve
+itself, and a teacher cannot edit a colleague's project. Run it after any
+schema change.
 
 ## Layout
 
