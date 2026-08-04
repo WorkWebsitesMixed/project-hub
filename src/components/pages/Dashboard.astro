@@ -2,39 +2,22 @@
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations, localizePath } from '../../i18n/utils';
 import { STATUS_LABELS } from '../../lib/subjects';
-import type { ProjectStatus } from '../../lib/subjects';
+import type { DashboardData } from '../../lib/pageLoaders';
+
+interface Props {
+  data: DashboardData;
+}
+
+// Pure renderer — see src/lib/pageLoaders.ts for why.
+const { data } = Astro.props;
+const { myProjects, received, sent, error } = data;
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
 
-const { supabase, profile } = Astro.locals;
-
-// RLS already limits what comes back, so these queries stay simple: ask for
-// what this teacher owns, and let the database decide what they may see.
-const [{ data: myProjects }, { data: interestReceived }, { data: interestSent }] =
-  await Promise.all([
-    supabase
-      .from('projects')
-      .select('id, title, status, updated_at')
-      .eq('owner_id', profile!.id)
-      .order('updated_at', { ascending: false }),
-
-    // Requests on projects this teacher can edit. The policy
-    // `collab_select_project_side` is what scopes this to their own projects.
-    supabase
-      .from('collaboration_requests')
-      .select('id, message, status, created_at, projects(id, title), profiles(full_name, email)')
-      .neq('user_id', profile!.id)
-      .order('created_at', { ascending: false }),
-
-    supabase
-      .from('collaboration_requests')
-      .select('id, status, created_at, projects(id, title)')
-      .eq('user_id', profile!.id)
-      .order('created_at', { ascending: false }),
-  ]);
-
-const statusLabel = (s: ProjectStatus) => STATUS_LABELS[s][locale];
+// Unanswered offers come first — they are the only ones needing a decision.
+const waiting = received.filter((r) => r.status === 'interested');
+const answered = received.filter((r) => r.status !== 'interested');
 ---
 
 <Layout title={t('dash.title')}>
@@ -48,14 +31,22 @@ const statusLabel = (s: ProjectStatus) => STATUS_LABELS[s][locale];
     </a>
   </div>
 
-  <div class="mt-10 grid gap-8 lg:grid-cols-3">
+  {
+    error && (
+      <p class="mt-6 rounded-lg border border-magenta bg-magenta-tint px-4 py-3 text-sm text-navy">
+        {error}
+      </p>
+    )
+  }
+
+  <div class="mt-10 grid gap-10 lg:grid-cols-3">
     <section class="lg:col-span-2">
       <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
         {t('dash.myProjects')}
       </h2>
 
       {
-        myProjects && myProjects.length > 0 ? (
+        myProjects.length > 0 ? (
           <ul class="mt-4 divide-y divide-line rounded-card border border-line">
             {myProjects.map((p) => (
               <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -65,7 +56,7 @@ const statusLabel = (s: ProjectStatus) => STATUS_LABELS[s][locale];
                 >
                   {p.title}
                 </a>
-                <span class="chip">{statusLabel(p.status as ProjectStatus)}</span>
+                <span class="chip">{STATUS_LABELS[p.status][locale]}</span>
               </li>
             ))}
           </ul>
@@ -75,59 +66,136 @@ const statusLabel = (s: ProjectStatus) => STATUS_LABELS[s][locale];
           </p>
         )
       }
-    </section>
 
-    <aside class="space-y-8">
-      <section>
-        <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
-          {t('dash.interest')}
-        </h2>
-
-        {
-          interestReceived && interestReceived.length > 0 ? (
-            <ul class="mt-4 space-y-3">
-              {interestReceived.map((r: any) => (
-                <li class="rounded-card border border-line px-4 py-3">
-                  <p class="text-sm font-medium text-navy">
-                    {r.profiles?.full_name ?? r.profiles?.email}
-                  </p>
-                  <p class="mt-0.5 text-xs text-ink-muted">{r.projects?.title}</p>
-                  {r.message && (
-                    <p class="mt-2 text-sm leading-relaxed text-ink-muted">
-                      “{r.message}”
-                    </p>
-                  )}
-                  <a
-                    href={`mailto:${r.profiles?.email}`}
-                    class="mt-2 inline-block text-xs font-medium text-purple hover:underline"
-                  >
-                    {r.profiles?.email}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p class="mt-4 text-sm text-ink-muted">{t('dash.noInterest')}</p>
-          )
-        }
-      </section>
+      <!--
+        The inbox. This is the half of "I want to collaborate" the project
+        owner sees — the button on the project page is only ever visible to
+        someone who is not the owner.
+      -->
+      <h2 class="mt-12 text-sm font-semibold uppercase tracking-widest text-ink-muted">
+        {t('dash.interest')}
+        {waiting.length > 0 && <span class="chip tone-amber ml-2">{waiting.length}</span>}
+      </h2>
 
       {
-        interestSent && interestSent.length > 0 && (
+        received.length === 0 ? (
+          <p class="mt-4 text-sm text-ink-muted">{t('dash.noInterest')}</p>
+        ) : (
+          <ul class="mt-4 space-y-3">
+            {[...waiting, ...answered].map((request) => (
+              <li
+                class:list={[
+                  'rounded-card border p-4',
+                  request.status === 'interested' ? 'border-amber' : 'border-line',
+                ]}
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="font-medium text-navy">
+                      {request.requester?.full_name ?? request.requester?.email}
+                    </p>
+                    {request.project && (
+                      <a
+                        href={localizePath(`/projects/${request.project.id}`, locale)}
+                        class="text-xs text-ink-muted hover:text-navy hover:underline"
+                      >
+                        {request.project.title}
+                      </a>
+                    )}
+                  </div>
+
+                  {request.status === 'interested' ? (
+                    <span class="chip tone-amber">{t('dash.waiting')}</span>
+                  ) : request.status === 'accepted' ? (
+                    <span class="chip tone-green">{t('dash.onTheTeam')}</span>
+                  ) : (
+                    <span class="chip">{t('dash.declined')}</span>
+                  )}
+                </div>
+
+                {request.message && (
+                  <p class="mt-3 border-l-2 border-line pl-3 text-sm leading-relaxed text-ink-muted">
+                    {request.message}
+                  </p>
+                )}
+
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                  {request.status === 'interested' && (
+                    <>
+                      <form method="POST">
+                        <input type="hidden" name="action" value="respond" />
+                        <input type="hidden" name="request_id" value={request.id} />
+                        <input type="hidden" name="decision" value="accept" />
+                        <button
+                          type="submit"
+                          title={t('dash.acceptHint')}
+                          class="rounded-md bg-navy px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-navy-soft"
+                        >
+                          {t('dash.accept')}
+                        </button>
+                      </form>
+                      <form method="POST">
+                        <input type="hidden" name="action" value="respond" />
+                        <input type="hidden" name="request_id" value={request.id} />
+                        <input type="hidden" name="decision" value="decline" />
+                        <button
+                          type="submit"
+                          class="rounded-md border border-line px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-surface-sunken hover:text-navy"
+                        >
+                          {t('dash.decline')}
+                        </button>
+                      </form>
+                    </>
+                  )}
+
+                  {request.requester?.email && (
+                    <a
+                      href={`mailto:${request.requester.email}`}
+                      class="text-xs font-medium text-purple hover:underline"
+                    >
+                      {request.requester.email}
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+
+    <aside>
+      {
+        sent.length > 0 && (
           <section>
             <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
               {t('dash.myInterest')}
             </h2>
             <ul class="mt-4 space-y-2 text-sm">
-              {interestSent.map((r: any) => (
+              {sent.map((request) => (
                 <li class="flex items-center justify-between gap-2">
                   <a
-                    href={localizePath(`/projects/${r.projects?.id}`, locale)}
-                    class="text-navy hover:underline"
+                    href={localizePath(`/projects/${request.project?.id}`, locale)}
+                    class="min-w-0 truncate text-navy hover:underline"
                   >
-                    {r.projects?.title}
+                    {request.project?.title}
                   </a>
-                  <span class="chip text-xs">{r.status}</span>
+                  <span
+                    class:list={[
+                      'chip shrink-0',
+                      request.status === 'accepted'
+                        ? 'tone-green'
+                        : request.status === 'declined'
+                          ? ''
+                          : 'tone-amber',
+                    ]}
+                  >
+                    {request.status === 'accepted'
+                      ? t('dash.onTheTeam')
+                      : request.status === 'declined'
+                        ? t('dash.declined')
+                        : t('project.collaborateSent')}
+                  </span>
                 </li>
               ))}
             </ul>

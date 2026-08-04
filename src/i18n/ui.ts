@@ -126,6 +126,12 @@ export const ui = {
     'browse.matchAll': 'All of these',
     'browse.apply': 'Apply filters',
     'browse.area': 'Area',
+    'dash.accept': 'Accept',
+    'dash.decline': 'Decline',
+    'dash.onTheTeam': 'On the team',
+    'dash.declined': 'Declined',
+    'dash.waiting': 'Waiting on you',
+    'dash.acceptHint': 'Accepting gives this teacher edit access to the project.',
   },
   es: {
     'site.title': 'Project Hub',
@@ -235,6 +241,12 @@ export const ui = {
     'browse.matchAll': 'Todas estas',
     'browse.apply': 'Aplicar filtros',
     'browse.area': 'Área',
+    'dash.accept': 'Aceptar',
+    'dash.decline': 'Rechazar',
+    'dash.onTheTeam': 'En el equipo',
+    'dash.declined': 'Rechazada',
+    'dash.waiting': 'Esperando tu respuesta',
+    'dash.acceptHint': 'Aceptar le da a esta persona acceso de edición al proyecto.',
   },
   fr: {
     'site.title': 'Project Hub',
@@ -345,6 +357,12 @@ export const ui = {
     'browse.matchAll': 'Toutes celles-ci',
     'browse.apply': 'Appliquer les filtres',
     'browse.area': 'Domaine',
+    'dash.accept': 'Accepter',
+    'dash.decline': 'Refuser',
+    'dash.onTheTeam': 'Dans l’équipe',
+    'dash.declined': 'Refusée',
+    'dash.waiting': 'En attente de votre réponse',
+    'dash.acceptHint': 'Accepter donne à cette personne un accès en modification au projet.',
   },
 } as const;
 

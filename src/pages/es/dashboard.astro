@@ -1,5 +1,14 @@
 ---
-import Dashboard from "../../components/pages/Dashboard.astro";
+import Dashboard from '../../components/pages/Dashboard.astro';
+import { loadDashboard } from '../../lib/pageLoaders';
+import { getLocaleFromUrl } from '../../i18n/utils';
+
+const locale = getLocaleFromUrl(Astro.url);
+const result = await loadDashboard(Astro, locale);
+// Redirects must be returned from the page, not from a component.
+if (result.kind === 'redirect') return Astro.redirect(result.to);
+
+const { data } = result;
 ---
 
-<Dashboard />
+<Dashboard data={data} />

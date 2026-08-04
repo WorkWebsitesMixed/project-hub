@@ -294,3 +294,93 @@ export async function loadApprovals(
     error,
   });
 }
+
+export interface DashboardData {
+  myProjects: {
+    id: string;
+    title: string;
+    status: ProjectStatus;
+    updated_at: string;
+  }[];
+  /** Offers to help on projects this teacher can act on. */
+  received: {
+    id: string;
+    message: string;
+    status: 'interested' | 'accepted' | 'declined';
+    created_at: string;
+    project: { id: string; title: string } | null;
+    requester: { full_name: string | null; email: string | null } | null;
+  }[];
+  /** Offers this teacher has made on other people's projects. */
+  sent: {
+    id: string;
+    status: 'interested' | 'accepted' | 'declined';
+    project: { id: string; title: string } | null;
+  }[];
+  error: string | null;
+}
+
+export async function loadDashboard(
+  ctx: Ctx,
+  locale: Locale,
+): Promise<LoadResult<DashboardData>> {
+  const { supabase, profile } = ctx.locals;
+  if (!profile) return redirectTo(localizePath('/', locale));
+
+  let error: string | null = null;
+
+  if (ctx.request.method === 'POST') {
+    const form = await ctx.request.formData();
+    if (String(form.get('action')) === 'respond') {
+      // One RPC flips the request status and grants or withdraws the
+      // project_members row together — an accepted request must never exist
+      // without the membership that actually gives the colleague access.
+      const { error: rpcError } = await supabase.rpc('respond_to_collaboration', {
+        p_request_id: String(form.get('request_id') ?? ''),
+        p_accept: form.get('decision') === 'accept',
+      });
+      if (rpcError) error = rpcError.message;
+      else return redirectTo(ctx.url.pathname);
+    }
+  }
+
+  const [{ data: myProjects }, { data: received }, { data: sent }] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('id, title, status, updated_at')
+      .eq('owner_id', profile.id)
+      .order('updated_at', { ascending: false }),
+
+    // RLS policy `collab_select_project_side` is what scopes this to projects
+    // this teacher may edit; the .neq keeps their own offers out of the inbox.
+    supabase
+      .from('collaboration_requests')
+      .select('id, message, status, created_at, projects(id, title), profiles(full_name, email)')
+      .neq('user_id', profile.id)
+      .order('created_at', { ascending: false }),
+
+    supabase
+      .from('collaboration_requests')
+      .select('id, status, projects(id, title)')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  return ok({
+    myProjects: (myProjects ?? []) as DashboardData['myProjects'],
+    received: (received ?? []).map((r: any) => ({
+      id: r.id,
+      message: r.message,
+      status: r.status,
+      created_at: r.created_at,
+      project: r.projects ?? null,
+      requester: r.profiles ?? null,
+    })),
+    sent: (sent ?? []).map((r: any) => ({
+      id: r.id,
+      status: r.status,
+      project: r.projects ?? null,
+    })),
+    error,
+  });
+}

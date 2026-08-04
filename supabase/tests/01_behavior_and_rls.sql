@@ -351,4 +351,76 @@ do $$ begin
   end;
 end $$;
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- respond_to_collaboration
+-- ─────────────────────────────────────────────────────────────────────────────
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';  -- Luis
+
+-- Luis does not own Ana's project, so he must not be able to accept his own
+-- request to join it.
+do $$
+declare v_req uuid;
+begin
+  select id into v_req from public.collaboration_requests
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+  begin
+    perform public.respond_to_collaboration(v_req, true);
+    raise notice 'FAIL  a non-owner accepted their own collaboration request';
+  exception when insufficient_privilege then
+    raise notice 'PASS  non-owner cannot answer a collaboration request';
+  end;
+end $$;
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';  -- Ana, the owner
+
+do $$
+declare v_req uuid; v_status text; v_member text;
+begin
+  select id into v_req from public.collaboration_requests
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  perform public.respond_to_collaboration(v_req, true);
+
+  select status::text into v_status from public.collaboration_requests where id = v_req;
+  select role::text into v_member from public.project_members
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+     and user_id = '22222222-2222-2222-2222-222222222222';
+
+  if v_status = 'accepted' and v_member = 'collaborator' then
+    raise notice 'PASS  accepting a request grants project membership';
+  else
+    raise notice 'FAIL  after accept: status=%, membership=%', v_status, v_member;
+  end if;
+
+  -- Declining afterwards must withdraw the access again.
+  perform public.respond_to_collaboration(v_req, false);
+
+  select status::text into v_status from public.collaboration_requests where id = v_req;
+  select role::text into v_member from public.project_members
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+     and user_id = '22222222-2222-2222-2222-222222222222';
+
+  if v_status = 'declined' and v_member is null then
+    raise notice 'PASS  declining withdraws membership again';
+  else
+    raise notice 'FAIL  after decline: status=%, membership=%', v_status, v_member;
+  end if;
+
+  -- The owner's own membership must survive all of this.
+  select role::text into v_member from public.project_members
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000001'
+     and user_id = '11111111-1111-1111-1111-111111111111';
+  if v_member = 'owner' then
+    raise notice 'PASS  owner membership untouched by decline';
+  else
+    raise notice 'FAIL  owner membership became %', v_member;
+  end if;
+end $$;
+
 reset role;

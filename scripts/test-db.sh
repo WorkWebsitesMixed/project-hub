@@ -59,12 +59,14 @@ echo
 echo "Running tests…"
 echo
 # psql writes RAISE NOTICE to stderr; fold it in so the results are visible.
-OUTPUT=$(psql_file supabase/tests/01_behavior_and_rls.sql 2>&1)
-echo "$OUTPUT" | grep -E 'PASS|FAIL' | sed 's/^psql:[^ ]* //; s/^NOTICE:  //'
+# `|| true` so a SQL error is reported rather than killing the script under
+# `set -e`, which would print nothing at all.
+OUTPUT=$(psql_file supabase/tests/01_behavior_and_rls.sql 2>&1) || true
+echo "$OUTPUT" | grep -E 'PASS|FAIL|ERROR' | sed 's/^psql:[^ ]* //; s/^NOTICE:  //'
 
 echo
-if echo "$OUTPUT" | grep -q 'FAIL'; then
-  echo "FAILED — $(echo "$OUTPUT" | grep -c FAIL) check(s) did not pass."
+if echo "$OUTPUT" | grep -qE 'FAIL|ERROR'; then
+  echo "FAILED — see the output above."
   exit 1
 fi
 echo "All checks passed."
