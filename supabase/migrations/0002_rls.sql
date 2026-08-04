@@ -99,6 +99,7 @@ begin
 end;
 $$;
 
+drop trigger if exists profiles_guard_privileges on public.profiles;
 create trigger profiles_guard_privileges
   before update on public.profiles
   for each row execute function public.guard_profile_privileges();
@@ -124,25 +125,35 @@ alter table public.project_attachments    enable row level security;
 
 -- Own row is always readable — a pending teacher needs it to render the
 -- "waiting for approval" screen.
-create policy profiles_select_self on public.profiles
+drop policy if exists profiles_select_self on public.profiles;
+create policy profiles_select_self
+  on public.profiles
   for select to authenticated
   using (id = auth.uid());
 
-create policy profiles_select_approved on public.profiles
+drop policy if exists profiles_select_approved on public.profiles;
+create policy profiles_select_approved
+  on public.profiles
   for select to authenticated
   using (public.is_approved() and status = 'approved');
 
-create policy profiles_select_admin on public.profiles
+drop policy if exists profiles_select_admin on public.profiles;
+create policy profiles_select_admin
+  on public.profiles
   for select to authenticated
   using (public.is_admin());
 
 -- Name, department, avatar. Status and role are blocked by the trigger above.
-create policy profiles_update_self on public.profiles
+drop policy if exists profiles_update_self on public.profiles;
+create policy profiles_update_self
+  on public.profiles
   for update to authenticated
   using (id = auth.uid())
   with check (id = auth.uid());
 
-create policy profiles_update_admin on public.profiles
+drop policy if exists profiles_update_admin on public.profiles;
+create policy profiles_update_admin
+  on public.profiles
   for update to authenticated
   using (public.is_admin())
   with check (public.is_admin());
@@ -152,17 +163,25 @@ create policy profiles_update_admin on public.profiles
 -- populate. It is a public curriculum list; nothing sensitive lives here.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy subjects_select on public.subjects
+drop policy if exists subjects_select on public.subjects;
+create policy subjects_select
+  on public.subjects
   for select to authenticated using (true);
 
-create policy subjects_write_admin on public.subjects
+drop policy if exists subjects_write_admin on public.subjects;
+create policy subjects_write_admin
+  on public.subjects
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
-create policy grade_subjects_select on public.grade_subjects
+drop policy if exists grade_subjects_select on public.grade_subjects;
+create policy grade_subjects_select
+  on public.grade_subjects
   for select to authenticated using (true);
 
-create policy grade_subjects_write_admin on public.grade_subjects
+drop policy if exists grade_subjects_write_admin on public.grade_subjects;
+create policy grade_subjects_write_admin
+  on public.grade_subjects
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
@@ -170,20 +189,28 @@ create policy grade_subjects_write_admin on public.grade_subjects
 -- projects
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy projects_select on public.projects
+drop policy if exists projects_select on public.projects;
+create policy projects_select
+  on public.projects
   for select to authenticated
   using (public.is_approved());
 
-create policy projects_insert on public.projects
+drop policy if exists projects_insert on public.projects;
+create policy projects_insert
+  on public.projects
   for insert to authenticated
   with check (public.is_approved() and owner_id = auth.uid());
 
-create policy projects_update on public.projects
+drop policy if exists projects_update on public.projects;
+create policy projects_update
+  on public.projects
   for update to authenticated
   using (public.can_edit_project(id))
   with check (public.can_edit_project(id));
 
-create policy projects_delete on public.projects
+drop policy if exists projects_delete on public.projects;
+create policy projects_delete
+  on public.projects
   for delete to authenticated
   using (public.can_manage_project(id));
 
@@ -192,18 +219,26 @@ create policy projects_delete on public.projects
 -- Writable only by the people who can edit the parent project.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy project_grades_select on public.project_grades
+drop policy if exists project_grades_select on public.project_grades;
+create policy project_grades_select
+  on public.project_grades
   for select to authenticated using (public.is_approved());
 
-create policy project_grades_write on public.project_grades
+drop policy if exists project_grades_write on public.project_grades;
+create policy project_grades_write
+  on public.project_grades
   for all to authenticated
   using (public.can_edit_project(project_id))
   with check (public.can_edit_project(project_id));
 
-create policy project_subjects_select on public.project_subjects
+drop policy if exists project_subjects_select on public.project_subjects;
+create policy project_subjects_select
+  on public.project_subjects
   for select to authenticated using (public.is_approved());
 
-create policy project_subjects_write on public.project_subjects
+drop policy if exists project_subjects_write on public.project_subjects;
+create policy project_subjects_write
+  on public.project_subjects
   for all to authenticated
   using (public.can_edit_project(project_id))
   with check (public.can_edit_project(project_id));
@@ -212,10 +247,14 @@ create policy project_subjects_write on public.project_subjects
 -- project_members
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy project_members_select on public.project_members
+drop policy if exists project_members_select on public.project_members;
+create policy project_members_select
+  on public.project_members
   for select to authenticated using (public.is_approved());
 
-create policy project_members_write on public.project_members
+drop policy if exists project_members_write on public.project_members;
+create policy project_members_write
+  on public.project_members
   for all to authenticated
   using (public.can_manage_project(project_id))
   with check (public.can_manage_project(project_id));
@@ -227,31 +266,43 @@ create policy project_members_write on public.project_members
 -- interest declined is one thing; the whole staff seeing it is another.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy collab_select_own on public.collaboration_requests
+drop policy if exists collab_select_own on public.collaboration_requests;
+create policy collab_select_own
+  on public.collaboration_requests
   for select to authenticated
   using (public.is_approved() and user_id = auth.uid());
 
-create policy collab_select_project_side on public.collaboration_requests
+drop policy if exists collab_select_project_side on public.collaboration_requests;
+create policy collab_select_project_side
+  on public.collaboration_requests
   for select to authenticated
   using (public.can_edit_project(project_id));
 
 -- You may only express interest on your own behalf.
-create policy collab_insert_self on public.collaboration_requests
+drop policy if exists collab_insert_self on public.collaboration_requests;
+create policy collab_insert_self
+  on public.collaboration_requests
   for insert to authenticated
   with check (public.is_approved() and user_id = auth.uid());
 
 -- Withdraw your own request.
-create policy collab_update_own on public.collaboration_requests
+drop policy if exists collab_update_own on public.collaboration_requests;
+create policy collab_update_own
+  on public.collaboration_requests
   for update to authenticated
   using (public.is_approved() and user_id = auth.uid())
   with check (user_id = auth.uid());
 
-create policy collab_delete_own on public.collaboration_requests
+drop policy if exists collab_delete_own on public.collaboration_requests;
+create policy collab_delete_own
+  on public.collaboration_requests
   for delete to authenticated
   using (public.is_approved() and user_id = auth.uid());
 
 -- Accept or decline, from the project side.
-create policy collab_update_project_side on public.collaboration_requests
+drop policy if exists collab_update_project_side on public.collaboration_requests;
+create policy collab_update_project_side
+  on public.collaboration_requests
   for update to authenticated
   using (public.can_edit_project(project_id))
   with check (public.can_edit_project(project_id));
@@ -260,10 +311,14 @@ create policy collab_update_project_side on public.collaboration_requests
 -- project_attachments
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy attachments_select on public.project_attachments
+drop policy if exists attachments_select on public.project_attachments;
+create policy attachments_select
+  on public.project_attachments
   for select to authenticated using (public.is_approved());
 
-create policy attachments_write on public.project_attachments
+drop policy if exists attachments_write on public.project_attachments;
+create policy attachments_write
+  on public.project_attachments
   for all to authenticated
   using (public.can_edit_project(project_id))
   with check (public.can_edit_project(project_id));

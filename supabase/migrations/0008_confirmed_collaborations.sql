@@ -40,7 +40,9 @@ create index if not exists collab_requests_offered_idx
 -- declined offers stay private.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create policy collab_select_accepted on public.collaboration_requests
+drop policy if exists collab_select_accepted on public.collaboration_requests;
+create policy collab_select_accepted
+  on public.collaboration_requests
   for select to authenticated
   using (public.is_approved() and status = 'accepted');
 

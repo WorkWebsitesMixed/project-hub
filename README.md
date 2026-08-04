@@ -76,6 +76,11 @@ npm run dev
 Migrations live in `supabase/migrations/` and are applied **in filename order**.
 Paste each into the Supabase SQL Editor, or run them with the Supabase CLI.
 
+Every file is **idempotent** — safe to re-run, and safe to run out of order
+if nothing in it depends on an earlier file. `npm run db:test` applies the
+whole set twice on purpose, so a migration that would fail on a second run
+fails the test suite instead of failing in production.
+
 | File | Contents |
 | --- | --- |
 | `0001_schema.sql` | Tables, enums, indexes, triggers |

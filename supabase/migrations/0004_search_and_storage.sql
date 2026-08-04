@@ -204,18 +204,24 @@ values (
 )
 on conflict (id) do nothing;
 
-create policy project_files_read on storage.objects
+drop policy if exists project_files_read on storage.objects;
+create policy project_files_read
+  on storage.objects
   for select to authenticated
   using (bucket_id = 'project-files' and public.is_approved());
 
-create policy project_files_write on storage.objects
+drop policy if exists project_files_write on storage.objects;
+create policy project_files_write
+  on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'project-files'
     and public.can_edit_project(((storage.foldername(name))[1])::uuid)
   );
 
-create policy project_files_delete on storage.objects
+drop policy if exists project_files_delete on storage.objects;
+create policy project_files_delete
+  on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'project-files'

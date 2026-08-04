@@ -55,6 +55,16 @@ for f in supabase/migrations/*.sql; do
   psql_file "$f"
 done
 
+# Apply everything a second time. Re-running a migration is a normal thing to
+# do when you are not sure whether it landed, and it should never be the thing
+# that breaks the database — so every file has to be idempotent, and this is
+# what proves it rather than assuming it.
+echo
+echo "Re-applying to prove the migrations are idempotent…"
+for f in supabase/migrations/*.sql; do
+  psql_file "$f"
+done
+
 echo
 echo "Running tests…"
 echo

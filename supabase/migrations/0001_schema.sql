@@ -11,13 +11,34 @@
 -- Enums
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create type public.profile_status as enum ('pending', 'approved', 'rejected');
-create type public.app_role       as enum ('teacher', 'admin');
-create type public.project_status as enum ('idea', 'in_progress', 'completed');
-create type public.subject_role   as enum ('primary', 'cross');
-create type public.member_role    as enum ('owner', 'editor', 'collaborator');
-create type public.request_status as enum ('interested', 'accepted', 'declined');
-create type public.content_lang   as enum ('en', 'es', 'fr');
+do $$ begin
+  create type public.profile_status as enum ('pending', 'approved', 'rejected');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type public.app_role       as enum ('teacher', 'admin');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type public.project_status as enum ('idea', 'in_progress', 'completed');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type public.subject_role   as enum ('primary', 'cross');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type public.member_role    as enum ('owner', 'editor', 'collaborator');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type public.request_status as enum ('interested', 'accepted', 'declined');
+exception when duplicate_object then null;
+end $$;
+do $$ begin
+  create type public.content_lang   as enum ('en', 'es', 'fr');
+exception when duplicate_object then null;
+end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- People
@@ -27,7 +48,7 @@ create type public.content_lang   as enum ('en', 'es', 'fr');
 -- alone cannot identify a teacher. Every new sign-in lands as 'pending' and
 -- sees nothing until an admin approves it. This column is the real access gate;
 -- see 0002_rls.sql where it is enforced.
-create table public.profiles (
+create table if not exists public.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
   email       text not null unique,
   full_name   text,
@@ -39,7 +60,7 @@ create table public.profiles (
   updated_at  timestamptz not null default now()
 );
 
-create index profiles_status_idx on public.profiles (status);
+create index if not exists profiles_status_idx on public.profiles (status);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Subject catalog
@@ -48,7 +69,7 @@ create index profiles_status_idx on public.profiles (status);
 -- Seeded from src/lib/subjects.ts — edit that file and regenerate, never
 -- hand-edit the seed. `family` drives the accent colour of every chip and
 -- graph node in the UI.
-create table public.subjects (
+create table if not exists public.subjects (
   slug       text primary key,
   name_en    text not null,
   name_es    text not null,
@@ -58,7 +79,7 @@ create table public.subjects (
 );
 
 -- The taggable unit: one row per (subject, grade) the school actually offers.
-create table public.grade_subjects (
+create table if not exists public.grade_subjects (
   id           uuid primary key default gen_random_uuid(),
   subject_slug text     not null references public.subjects (slug)
                           on update cascade on delete cascade,
@@ -66,13 +87,13 @@ create table public.grade_subjects (
   unique (subject_slug, grade)
 );
 
-create index grade_subjects_grade_idx on public.grade_subjects (grade);
+create index if not exists grade_subjects_grade_idx on public.grade_subjects (grade);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Projects
 -- ─────────────────────────────────────────────────────────────────────────────
 
-create table public.projects (
+create table if not exists public.projects (
   id          uuid primary key default gen_random_uuid(),
   owner_id    uuid not null references public.profiles (id) on delete cascade,
   title       text not null check (char_length(trim(title)) between 3 and 200),
@@ -101,24 +122,24 @@ create table public.projects (
   ) stored
 );
 
-create index projects_search_idx  on public.projects using gin (search_vector);
-create index projects_owner_idx   on public.projects (owner_id);
-create index projects_status_idx  on public.projects (status);
-create index projects_created_idx on public.projects (created_at desc);
+create index if not exists projects_search_idx  on public.projects using gin (search_vector);
+create index if not exists projects_owner_idx   on public.projects (owner_id);
+create index if not exists projects_status_idx  on public.projects (status);
+create index if not exists projects_created_idx on public.projects (created_at desc);
 
 -- Which grades the project is aimed at. Separate from the subject tags because
 -- a project can target 11th graders while connecting to a 12th-grade subject.
-create table public.project_grades (
+create table if not exists public.project_grades (
   project_id uuid     not null references public.projects (id) on delete cascade,
   grade      smallint not null check (grade in (10, 11, 12)),
   primary key (project_id, grade)
 );
 
-create index project_grades_grade_idx on public.project_grades (grade);
+create index if not exists project_grades_grade_idx on public.project_grades (grade);
 
 -- The cross-disciplinary web. One row per tag; `role` separates the project's
 -- own subject from the subjects it reaches into.
-create table public.project_subjects (
+create table if not exists public.project_subjects (
   project_id       uuid not null references public.projects (id) on delete cascade,
   grade_subject_id uuid not null references public.grade_subjects (id) on delete restrict,
   role             public.subject_role not null default 'cross',
@@ -126,17 +147,17 @@ create table public.project_subjects (
 );
 
 -- Exactly one primary subject per project.
-create unique index project_subjects_one_primary_idx
+create unique index if not exists project_subjects_one_primary_idx
   on public.project_subjects (project_id)
   where role = 'primary';
 
-create index project_subjects_lookup_idx
+create index if not exists project_subjects_lookup_idx
   on public.project_subjects (grade_subject_id, role);
 
 -- Who may act on a project. The owner is seeded here as a member with role
 -- 'owner' (see the trigger below), so promoting a collaborator to co-editor is
 -- a one-row update rather than a schema change.
-create table public.project_members (
+create table if not exists public.project_members (
   project_id uuid not null references public.projects (id) on delete cascade,
   user_id    uuid not null references public.profiles (id) on delete cascade,
   role       public.member_role not null default 'collaborator',
@@ -144,12 +165,12 @@ create table public.project_members (
   primary key (project_id, user_id)
 );
 
-create index project_members_user_idx on public.project_members (user_id);
+create index if not exists project_members_user_idx on public.project_members (user_id);
 
 -- "I want to collaborate". Distinct from project_members: this is the request,
 -- membership is the grant. Unique per (project, teacher) so the button is
 -- idempotent — clicking twice never creates a second request.
-create table public.collaboration_requests (
+create table if not exists public.collaboration_requests (
   id           uuid primary key default gen_random_uuid(),
   project_id   uuid not null references public.projects (id) on delete cascade,
   user_id      uuid not null references public.profiles (id) on delete cascade,
@@ -160,11 +181,11 @@ create table public.collaboration_requests (
   unique (project_id, user_id)
 );
 
-create index collab_requests_project_idx on public.collaboration_requests (project_id, status);
-create index collab_requests_user_idx    on public.collaboration_requests (user_id);
+create index if not exists collab_requests_project_idx on public.collaboration_requests (project_id, status);
+create index if not exists collab_requests_user_idx    on public.collaboration_requests (user_id);
 
 -- Optional images and documents, stored in the 'project-files' bucket.
-create table public.project_attachments (
+create table if not exists public.project_attachments (
   id           uuid primary key default gen_random_uuid(),
   project_id   uuid not null references public.projects (id) on delete cascade,
   storage_path text not null unique,
@@ -175,7 +196,7 @@ create table public.project_attachments (
   created_at   timestamptz not null default now()
 );
 
-create index project_attachments_project_idx on public.project_attachments (project_id);
+create index if not exists project_attachments_project_idx on public.project_attachments (project_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Triggers
@@ -191,10 +212,12 @@ begin
 end;
 $$;
 
+drop trigger if exists profiles_touch_updated_at on public.profiles;
 create trigger profiles_touch_updated_at
   before update on public.profiles
   for each row execute function public.touch_updated_at();
 
+drop trigger if exists projects_touch_updated_at on public.projects;
 create trigger projects_touch_updated_at
   before update on public.projects
   for each row execute function public.touch_updated_at();
@@ -214,6 +237,7 @@ begin
 end;
 $$;
 
+drop trigger if exists projects_add_owner_member on public.projects;
 create trigger projects_add_owner_member
   after insert on public.projects
   for each row execute function public.add_owner_as_member();
@@ -248,6 +272,7 @@ begin
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
