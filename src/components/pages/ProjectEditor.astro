@@ -1,0 +1,116 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ProjectForm from '../ProjectForm';
+import { getLocaleFromUrl, useTranslations } from '../../i18n/utils';
+import type { Grade, ProjectStatus } from '../../lib/subjects';
+import type { Locale } from '../../i18n/ui';
+
+interface Props {
+  /** Omitted when posting a new project. */
+  projectId?: string;
+}
+
+const { projectId } = Astro.props;
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+const { supabase } = Astro.locals;
+
+let initial: Record<string, unknown> | undefined;
+
+if (projectId) {
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, title, description, status, duration, resources, language')
+    .eq('id', projectId)
+    .maybeSingle();
+
+  // RLS returns nothing for a project this teacher may not see. Treat that the
+  // same as a missing project rather than leaking that it exists.
+  if (!project) return Astro.redirect('/dashboard');
+
+  const [{ data: grades }, { data: tags }] = await Promise.all([
+    supabase.from('project_grades').select('grade').eq('project_id', projectId),
+    supabase
+      .from('project_subjects')
+      .select('role, grade_subjects(subject_slug, grade)')
+      .eq('project_id', projectId),
+  ]);
+
+  const toTag = (row: any) =>
+    `${row.grade_subjects.subject_slug}@${row.grade_subjects.grade}`;
+
+  initial = {
+    id: project.id,
+    title: project.title,
+    description: project.description,
+    status: project.status as ProjectStatus,
+    duration: project.duration,
+    resources: project.resources,
+    language: project.language as Locale,
+    grades: (grades ?? []).map((g) => g.grade as Grade),
+    primarySubject: (tags ?? []).find((r: any) => r.role === 'primary')
+      ? toTag((tags ?? []).find((r: any) => r.role === 'primary'))
+      : null,
+    crossSubjects: (tags ?? []).filter((r: any) => r.role === 'cross').map(toTag),
+  };
+}
+
+const labels = {
+  title: t('form.title'),
+  description: t('form.description'),
+  descriptionHint: t('form.descriptionHint'),
+  grades: t('form.grades'),
+  grade: t('form.grade'),
+  primary: t('form.primary'),
+  primaryHint: t('form.primaryHint'),
+  cross: t('form.cross'),
+  crossHint: t('form.crossHint'),
+  status: t('form.status'),
+  language: t('form.language'),
+  languageHint: t('form.languageHint'),
+  duration: t('form.duration'),
+  durationHint: t('form.durationHint'),
+  durationPlaceholder: t('form.durationPlaceholder'),
+  resources: t('form.resources'),
+  resourcesHint: t('form.resourcesHint'),
+  files: t('form.files'),
+  filesHint: t('form.filesHint'),
+  submit: t('form.submit'),
+  saving: t('form.saving'),
+  cancel: t('form.cancel'),
+  noneSelected: t('form.noneSelected'),
+  selectedSuffix: t('form.selectedSuffix'),
+  errorTitle: t('form.errorTitle'),
+  errorGrades: t('form.errorGrades'),
+  errorPrimary: t('form.errorPrimary'),
+  errorGeneric: t('form.errorGeneric'),
+};
+
+const pickerLabels = {
+  search: t('picker.search'),
+  allGrades: t('picker.allGrades'),
+  allFamilies: t('picker.allFamilies'),
+  clear: t('picker.clear'),
+  noMatches: t('picker.noMatches'),
+};
+
+const heading = projectId ? t('edit.title') : t('new.title');
+---
+
+<Layout title={heading}>
+  <div class="mx-auto max-w-2xl">
+    <h1 class="text-3xl font-bold text-navy">{heading}</h1>
+    {!projectId && <p class="mt-2 leading-relaxed text-ink-muted">{t('new.intro')}</p>}
+
+    <div class="mt-8">
+      <ProjectForm
+        client:load
+        locale={locale}
+        initial={initial}
+        labels={labels}
+        pickerLabels={pickerLabels}
+      />
+    </div>
+  </div>
+</Layout>

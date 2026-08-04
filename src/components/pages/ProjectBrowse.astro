@@ -1,0 +1,280 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
+import {
+  GRADES,
+  FAMILIES,
+  SUBJECTS,
+  PROJECT_STATUSES,
+  STATUS_LABELS,
+  subjectBySlug,
+  type Family,
+  type Grade,
+  type ProjectStatus,
+} from '../../lib/subjects';
+import type { ProjectSearchRow } from '../../lib/database.types';
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+const { supabase } = Astro.locals;
+
+/*
+ * Every filter lives in the URL, so a teacher can send a colleague a link to
+ * "11th-grade projects that touch Design & Technology" and it just opens.
+ * The form below is a plain GET form for the same reason — no JavaScript
+ * required, and the back button behaves.
+ */
+const params = Astro.url.searchParams;
+const query = params.get('q')?.trim() ?? '';
+const selectedGrades = params.getAll('grade').map(Number).filter((g) => GRADES.includes(g as Grade)) as Grade[];
+const selectedSubjects = params.getAll('subject').filter((s) => subjectBySlug(s));
+const selectedStatuses = params
+  .getAll('status')
+  .filter((s) => PROJECT_STATUSES.includes(s as ProjectStatus)) as ProjectStatus[];
+const matchAll = params.get('match') === 'all';
+
+const { data, error } = await supabase.rpc('search_projects', {
+  p_query: query || null,
+  p_grades: selectedGrades.length ? selectedGrades : null,
+  p_subject_slugs: selectedSubjects.length ? selectedSubjects : null,
+  p_statuses: selectedStatuses.length ? selectedStatuses : null,
+  p_match_all: matchAll,
+  p_limit: 100,
+});
+
+const projects = (data ?? []) as ProjectSearchRow[];
+const hasFilters =
+  query !== '' ||
+  selectedGrades.length > 0 ||
+  selectedSubjects.length > 0 ||
+  selectedStatuses.length > 0;
+
+// Group the 22 subjects by family so the filter list reads as areas of the
+// school rather than one long alphabet.
+const subjectsByFamily = (Object.keys(FAMILIES) as Family[]).map((family) => ({
+  family,
+  label: localized(FAMILIES[family].label, locale),
+  subjects: SUBJECTS.filter((s) => s.family === family),
+}));
+---
+
+<Layout title={t('browse.title')}>
+  <div class="flex flex-wrap items-baseline justify-between gap-4">
+    <h1 class="text-3xl font-bold text-navy">{t('browse.title')}</h1>
+    <p class="text-sm text-ink-muted">
+      {projects.length}
+      {t('browse.results')}
+    </p>
+  </div>
+
+  <div class="mt-8 grid gap-8 lg:grid-cols-[18rem_1fr]">
+    <!-- Filters -->
+    <form method="GET" class="space-y-6 self-start rounded-card border border-line p-4 lg:sticky lg:top-4">
+      <div>
+        <input
+          type="search"
+          name="q"
+          value={query}
+          placeholder={t('browse.search')}
+          class="w-full rounded-lg border border-line px-3 py-2 text-sm text-navy placeholder:text-ink-muted"
+        />
+      </div>
+
+      <fieldset>
+        <legend class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+          {t('filter.grade')}
+        </legend>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          {
+            GRADES.map((grade) => (
+              <label class="cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="grade"
+                  value={grade}
+                  checked={selectedGrades.includes(grade)}
+                  class="peer sr-only"
+                />
+                <span class="chip peer-checked:bg-navy peer-checked:font-semibold peer-checked:text-white peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-cyan">
+                  {grade}
+                </span>
+              </label>
+            ))
+          }
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+          {t('filter.status')}
+        </legend>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          {
+            PROJECT_STATUSES.map((status) => (
+              <label class="cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="status"
+                  value={status}
+                  checked={selectedStatuses.includes(status)}
+                  class="peer sr-only"
+                />
+                <span class="chip peer-checked:bg-navy peer-checked:font-semibold peer-checked:text-white">
+                  {STATUS_LABELS[status][locale]}
+                </span>
+              </label>
+            ))
+          }
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+          {t('filter.subject')}
+        </legend>
+
+        <div class="mt-2 max-h-72 space-y-3 overflow-y-auto pr-1">
+          {
+            subjectsByFamily.map((group) => (
+              <div>
+                <p class="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                  {group.label}
+                </p>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  {group.subjects.map((subject) => (
+                    <label class="cursor-pointer">
+                      <input
+                        type="checkbox"
+                        name="subject"
+                        value={subject.slug}
+                        checked={selectedSubjects.includes(subject.slug)}
+                        class="peer sr-only"
+                      />
+                      <span class={`chip family-${subject.family} peer-checked:font-semibold peer-checked:ring-2 peer-checked:ring-navy`}>
+                        {localized(subject.name, locale)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+
+        <!--
+          The switch that makes interdisciplinary search actually work: "any"
+          widens the net, "all" finds the projects sitting at a real
+          intersection of two departments.
+        -->
+        <div class="mt-3 rounded-lg bg-surface-sunken p-2">
+          <p class="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+            {t('browse.matchMode')}
+          </p>
+          <div class="mt-1.5 flex gap-1.5 text-xs">
+            <label class="cursor-pointer">
+              <input type="radio" name="match" value="any" checked={!matchAll} class="peer sr-only" />
+              <span class="chip peer-checked:bg-navy peer-checked:font-semibold peer-checked:text-white">
+                {t('browse.matchAny')}
+              </span>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="match" value="all" checked={matchAll} class="peer sr-only" />
+              <span class="chip peer-checked:bg-navy peer-checked:font-semibold peer-checked:text-white">
+                {t('browse.matchAll')}
+              </span>
+            </label>
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="flex items-center gap-3 border-t border-line pt-4">
+        <button
+          type="submit"
+          class="rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-navy-soft"
+        >
+          {t('browse.apply')}
+        </button>
+        {
+          hasFilters && (
+            <a
+              href={localizePath('/projects', locale)}
+              class="text-xs text-ink-muted transition hover:text-navy"
+            >
+              {t('filter.clear')}
+            </a>
+          )
+        }
+      </div>
+    </form>
+
+    <!-- Results -->
+    <div>
+      {
+        error && (
+          <p class="rounded-lg border border-magenta bg-magenta-tint px-4 py-3 text-sm text-navy">
+            {error.message}
+          </p>
+        )
+      }
+
+      {
+        projects.length === 0 ? (
+          <div class="rounded-card border border-dashed border-line px-6 py-16 text-center">
+            <p class="text-ink-muted">{t('browse.none')}</p>
+            <p class="mt-1 text-sm text-ink-muted">{t('browse.noneHint')}</p>
+            <a
+              href={localizePath('/projects/new', locale)}
+              class="mt-6 inline-block rounded-lg bg-navy px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+            >
+              {t('nav.new')}
+            </a>
+          </div>
+        ) : (
+          <ul class="grid gap-4 sm:grid-cols-2">
+            {projects.map((project) => (
+              <li class="group rounded-card border border-line transition hover:border-navy/30 hover:shadow-sm">
+                <a href={localizePath(`/projects/${project.id}`, locale)} class="block p-5">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="chip tone-cyan">
+                      {STATUS_LABELS[project.status][locale]}
+                    </span>
+                    {project.grades.map((g) => (
+                      <span class="chip">{g}</span>
+                    ))}
+                  </div>
+
+                  <h2 class="mt-3 font-semibold leading-snug text-navy group-hover:underline">
+                    {project.title}
+                  </h2>
+
+                  {project.description && (
+                    <p class="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-muted">
+                      {project.description}
+                    </p>
+                  )}
+
+                  <div class="mt-3 flex flex-wrap gap-1.5">
+                    {project.subjects.map((tag) => (
+                      <span
+                        class={`chip family-${tag.family} ${tag.role === 'primary' ? 'chip-primary' : ''}`}
+                      >
+                        {tag.name[locale]} · {tag.grade}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p class="mt-3 text-xs text-ink-muted">
+                    {project.owner_name ?? project.owner_email}
+                    {project.interest_count > 0 && (
+                      <span class="ml-2">· {project.interest_count} interested</span>
+                    )}
+                  </p>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+  </div>
+</Layout>

@@ -1,0 +1,290 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
+import { STATUS_LABELS, subjectBySlug } from '../../lib/subjects';
+import type { ProjectStatus } from '../../lib/subjects';
+
+interface Props {
+  projectId: string;
+}
+
+const { projectId } = Astro.props;
+
+const locale = getLocaleFromUrl(Astro.url);
+const t = useTranslations(locale);
+const { supabase, profile } = Astro.locals;
+
+// Handle the collaborate button and the owner's delete action before rendering.
+let actionError: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'collaborate') {
+    const { error } = await supabase.from('collaboration_requests').insert({
+      project_id: projectId,
+      user_id: profile!.id,
+      message: String(form.get('message') ?? '').slice(0, 1000),
+    });
+    // The unique (project_id, user_id) index makes the button idempotent —
+    // a double click is not an error worth showing.
+    if (error && !error.message.includes('duplicate')) actionError = error.message;
+    else return Astro.redirect(Astro.url.pathname);
+  }
+
+  if (action === 'delete') {
+    const { error } = await supabase.from('projects').delete().eq('id', projectId);
+    if (error) actionError = error.message;
+    else return Astro.redirect(localizePath('/dashboard', locale));
+  }
+}
+
+const { data: project } = await supabase
+  .from('projects')
+  .select(
+    'id, title, description, status, duration, resources, language, created_at, owner_id, profiles(full_name, email)',
+  )
+  .eq('id', projectId)
+  .maybeSingle();
+
+// RLS hides projects this teacher may not see; a missing row and a forbidden
+// row look the same on purpose.
+if (!project) return Astro.redirect(localizePath('/projects', locale));
+
+const [{ data: grades }, { data: tags }, { data: attachments }, { data: myRequest }] =
+  await Promise.all([
+    supabase.from('project_grades').select('grade').eq('project_id', projectId),
+    supabase
+      .from('project_subjects')
+      .select('role, grade_subjects(subject_slug, grade)')
+      .eq('project_id', projectId),
+    supabase
+      .from('project_attachments')
+      .select('id, storage_path, file_name, mime_type')
+      .eq('project_id', projectId),
+    supabase
+      .from('collaboration_requests')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', profile!.id)
+      .maybeSingle(),
+  ]);
+
+const chips = (tags ?? []).map((row: any) => {
+  const slug = row.grade_subjects.subject_slug;
+  const subject = subjectBySlug(slug);
+  return {
+    role: row.role as 'primary' | 'cross',
+    grade: row.grade_subjects.grade as number,
+    family: subject?.family ?? 'stem',
+    name: subject ? localized(subject.name, locale) : slug,
+  };
+});
+
+const primaryChips = chips.filter((c) => c.role === 'primary');
+const crossChips = chips.filter((c) => c.role === 'cross');
+
+const owner = (project as any).profiles;
+const isOwner = project.owner_id === profile!.id;
+const canEdit = isOwner || profile!.role === 'admin';
+
+// The bucket is private, so links have to be signed. One hour is plenty for
+// someone reading a project page.
+const signedAttachments = await Promise.all(
+  (attachments ?? []).map(async (file) => {
+    const { data } = await supabase.storage
+      .from('project-files')
+      .createSignedUrl(file.storage_path, 3600);
+    return { ...file, url: data?.signedUrl ?? null };
+  }),
+);
+---
+
+<Layout title={project.title} description={project.description.slice(0, 160)}>
+  <a
+    href={localizePath('/projects', locale)}
+    class="text-sm text-ink-muted transition hover:text-navy"
+  >
+    ← {t('project.back')}
+  </a>
+
+  {
+    actionError && (
+      <p class="mt-4 rounded-lg border border-magenta bg-magenta-tint px-4 py-3 text-sm text-navy">
+        {actionError}
+      </p>
+    )
+  }
+
+  <article class="mt-4 grid gap-10 lg:grid-cols-3">
+    <div class="lg:col-span-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="chip tone-cyan">{STATUS_LABELS[project.status as ProjectStatus][locale]}</span>
+        {
+          (grades ?? []).map((g) => (
+            <span class="chip">
+              {t('form.grade')} {g.grade}
+            </span>
+          ))
+        }
+        {
+          project.language !== locale && (
+            <span class="chip tone-amber">{project.language.toUpperCase()}</span>
+          )
+        }
+      </div>
+
+      <h1 class="mt-4 text-3xl font-bold leading-tight text-navy">{project.title}</h1>
+
+      <p class="mt-2 text-sm text-ink-muted">
+        {t('project.by')}{' '}
+        <a href={`mailto:${owner?.email}`} class="font-medium text-purple hover:underline">
+          {owner?.full_name ?? owner?.email}
+        </a>
+      </p>
+
+      {
+        project.description && (
+          <div class="mt-6 whitespace-pre-wrap leading-relaxed text-ink">
+            {project.description}
+          </div>
+        )
+      }
+
+      {
+        signedAttachments.length > 0 && (
+          <section class="mt-8">
+            <h2 class="text-sm font-semibold uppercase tracking-widest text-ink-muted">
+              {t('project.attachments')}
+            </h2>
+            <ul class="mt-3 grid gap-3 sm:grid-cols-2">
+              {signedAttachments.map((file) => (
+                <li class="overflow-hidden rounded-card border border-line">
+                  {file.mime_type?.startsWith('image/') && file.url ? (
+                    <a href={file.url} target="_blank" rel="noopener">
+                      <img src={file.url} alt={file.file_name} class="h-40 w-full object-cover" />
+                    </a>
+                  ) : (
+                    <a
+                      href={file.url ?? '#'}
+                      target="_blank"
+                      rel="noopener"
+                      class="block px-4 py-3 text-sm text-navy hover:underline"
+                    >
+                      {file.file_name}
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+    </div>
+
+    <aside class="space-y-8">
+      <section>
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+          {t('project.primary')}
+        </h2>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          {
+            primaryChips.map((c) => (
+              <span class={`chip chip-primary family-${c.family}`}>
+                {c.name} · {c.grade}
+              </span>
+            ))
+          }
+        </div>
+      </section>
+
+      {
+        crossChips.length > 0 && (
+          <section>
+            <h2 class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+              {t('project.cross')}
+            </h2>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              {crossChips.map((c) => (
+                <span class={`chip family-${c.family}`}>
+                  {c.name} · {c.grade}
+                </span>
+              ))}
+            </div>
+          </section>
+        )
+      }
+
+      {
+        project.duration && (
+          <section>
+            <h2 class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+              {t('project.duration')}
+            </h2>
+            <p class="mt-1 text-sm text-ink">{project.duration}</p>
+          </section>
+        )
+      }
+
+      {
+        project.resources && (
+          <section>
+            <h2 class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+              {t('project.resources')}
+            </h2>
+            <p class="mt-1 whitespace-pre-wrap text-sm text-ink">{project.resources}</p>
+          </section>
+        )
+      }
+
+      <section class="rounded-card border border-line p-4">
+        {
+          isOwner ? (
+            <p class="text-sm text-ink-muted">{t('project.ownProject')}</p>
+          ) : myRequest ? (
+            <p class="text-sm font-medium text-navy">✓ {t('project.collabAlready')}</p>
+          ) : (
+            <form method="POST" class="space-y-3">
+              <input type="hidden" name="action" value="collaborate" />
+              <textarea
+                name="message"
+                rows={3}
+                placeholder={t('project.collabMessage')}
+                class="w-full rounded-lg border border-line px-3 py-2 text-sm text-navy placeholder:text-ink-muted"
+              />
+              <button
+                type="submit"
+                class="w-full rounded-lg bg-navy px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-soft"
+              >
+                {t('project.collaborate')}
+              </button>
+            </form>
+          )
+        }
+      </section>
+
+      {
+        canEdit && (
+          <section class="flex gap-2">
+            <a
+              href={localizePath(`/projects/${project.id}/edit`, locale)}
+              class="rounded-lg border border-line px-4 py-2 text-sm font-medium text-navy transition hover:bg-surface-sunken"
+            >
+              {t('project.edit')}
+            </a>
+            <form method="POST" onsubmit={`return confirm(${JSON.stringify(t('project.deleteConfirm'))})`}>
+              <input type="hidden" name="action" value="delete" />
+              <button
+                type="submit"
+                class="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-muted transition hover:bg-magenta-tint hover:text-navy"
+              >
+                {t('project.delete')}
+              </button>
+            </form>
+          </section>
+        )
+      }
+    </aside>
+  </article>
+</Layout>

@@ -263,4 +263,92 @@ do $$ begin
   end;
 end $$;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- upsert_project — still as Luis, an approved teacher
+-- ─────────────────────────────────────────────────────────────────────────────
+
+do $$
+declare new_id uuid; n_primary int; n_cross int; n_grades int;
+begin
+  new_id := public.upsert_project(
+    p_title           := 'Sound waves and the physics of the school choir',
+    p_description     := 'Recording the choir, then analysing harmonics.',
+    p_status          := 'idea',
+    p_duration        := 'Two or three weeks, flexible',
+    p_resources       := 'Microphones, the music room',
+    p_language        := 'en',
+    p_grades          := array[11]::smallint[],
+    p_primary_subject := 'physics@11',
+    -- 'physics@11' is repeated on purpose: a teacher who also ticks their own
+    -- subject in the big list should not be punished for it.
+    p_cross_subjects  := array['music@11', 'trigonometry@11', 'physics@11']
+  );
+
+  select count(*) into n_primary from public.project_subjects
+   where project_id = new_id and role = 'primary';
+  select count(*) into n_cross from public.project_subjects
+   where project_id = new_id and role = 'cross';
+  select count(*) into n_grades from public.project_grades where project_id = new_id;
+
+  if n_primary = 1 and n_cross = 2 and n_grades = 1 then
+    raise notice 'PASS  upsert_project created project with 1 primary + 2 cross tags';
+  else
+    raise notice 'FAIL  upsert_project tags: % primary, % cross, % grades',
+      n_primary, n_cross, n_grades;
+  end if;
+
+  -- Re-tagging must replace, not accumulate.
+  perform public.upsert_project(
+    p_title           := 'Sound waves and the physics of the school choir',
+    p_description     := 'Recording the choir, then analysing harmonics.',
+    p_status          := 'in_progress',
+    p_duration        := 'Two or three weeks, flexible',
+    p_resources       := 'Microphones, the music room',
+    p_language        := 'en',
+    p_grades          := array[11, 12]::smallint[],
+    p_primary_subject := 'physics@11',
+    p_cross_subjects  := array['music@11'],
+    p_id              := new_id
+  );
+
+  select count(*) into n_cross from public.project_subjects
+   where project_id = new_id and role = 'cross';
+  select count(*) into n_grades from public.project_grades where project_id = new_id;
+
+  if n_cross = 1 and n_grades = 2 then
+    raise notice 'PASS  re-tagging replaces rather than accumulates';
+  else
+    raise notice 'FAIL  after re-tag: % cross tags, % grades', n_cross, n_grades;
+  end if;
+end $$;
+
+do $$ begin
+  begin
+    perform public.upsert_project(
+      p_title := 'hijack attempt', p_description := '', p_status := 'idea',
+      p_duration := '', p_resources := '', p_language := 'en',
+      p_grades := array[11]::smallint[], p_primary_subject := 'physics@11',
+      p_id := 'aaaaaaaa-0000-0000-0000-000000000001'  -- Ana's project
+    );
+    raise notice 'FAIL  edited another teacher''s project through the RPC';
+  exception when insufficient_privilege then
+    raise notice 'PASS  RPC refuses to edit another teacher''s project';
+  end;
+end $$;
+
+do $$ begin
+  begin
+    perform public.upsert_project(
+      p_title := 'bad tag', p_description := '', p_status := 'idea',
+      p_duration := '', p_resources := '', p_language := 'en',
+      p_grades := array[11]::smallint[],
+      -- Calculus is a 12th-grade subject; there is no calculus@11.
+      p_primary_subject := 'calculus@11'
+    );
+    raise notice 'FAIL  a subject not offered at that grade was accepted';
+  exception when foreign_key_violation then
+    raise notice 'PASS  subject not offered at that grade rejected';
+  end;
+end $$;
+
 reset role;
