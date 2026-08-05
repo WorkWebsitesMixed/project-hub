@@ -11,7 +11,7 @@ waiting on IT to create a mailbox.
 | | |
 | --- | --- |
 | **Live site** | https://project-hub-hazel.vercel.app |
-| **Repo** | https://github.com/WorkWebsitesMixed/project-hub (public, 13 commits) |
+| **Repo** | https://github.com/WorkWebsitesMixed/project-hub (public) |
 | **Hosting** | Vercel, project `project-hub` under scope `class-tracker1` |
 | **Database** | Supabase, project ref `gmbmfejhbgdrmtbyefic` |
 | **Google OAuth** | Client `369705473552-vauso4diu5dnlvlnbeph4di2in7g6l6r.apps.googleusercontent.com` |
@@ -103,8 +103,9 @@ technical limit.
    runtime, not Edge — but it has not been tested, and it should not be assumed.
    If it fails, the fallback is Resend, which is already implemented and selected
    automatically when no `SMTP_*` values are set.
-5. Announce it. The teacher email currently says notifications do not exist yet;
-   that paragraph needs updating.
+5. Tell the staff. The announcement sent on 5 August says notifications do not
+   exist yet and asks teachers to check *Mi espacio*; that needs a short
+   follow-up once mail is flowing.
 
 ---
 
@@ -118,10 +119,9 @@ himself from the project page — the offer section now shows an amber prompt an
 a "Cambiar mi aporte" control. He is the only person affected; every offer since
 requires the subject at the form.
 
-**The teacher announcement has not been sent.** A draft exists with corrections
-applied: it needs to say that offers arrive in *Mi espacio* rather than by email,
-and describe the two views of the connections map. Sending it after the subdomain
-question resolves avoids a follow-up correcting the link.
+**Iván Darío Arango has an unanswered offer** from Verónica Correa on his
+JUSTICIA SOCIAL project, and no email notification exists to tell him. Worth a
+message. The same applies to anyone who posts before email is switched on.
 
 **Admin rights used to leak into collaboration** (fixed in `0009`). `can_edit_project()`
 says yes to admins on everything, which is right for moderation but wrong for
@@ -131,8 +131,9 @@ override, and the dashboard scopes its inbox explicitly rather than trusting
 RLS. If you add another feature around collaboration_requests, use
 `leads_project()`, not `can_edit_project()`.
 
-**A handful of teachers have accounts.** The announcement went out on 5 August. The confirmed-collaborations view is nearly empty, which is
-honest but not yet useful to a learning director.
+**A handful of teachers have accounts.** The announcement went out on 5 August
+and projects are arriving. The confirmed-collaborations view is still nearly
+empty — honest, but not yet useful to a learning director.
 
 **Vercel ↔ GitHub is not connected.** Deploys are manual. `vercel git connect`
 fails because the Vercel GitHub App is not authorised on the org.
