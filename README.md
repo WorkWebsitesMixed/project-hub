@@ -7,6 +7,9 @@ grades, and find colleagues whose work connects. The point is not a project
 archive — it is the moment a Calculus teacher discovers the 11th-grade Physics
 unit nobody told them about.
 
+> **Picking this up after a break?** Read [`HANDOFF.md`](HANDOFF.md) first —
+> current state, open items, and the exact steps to finish email notifications.
+
 ## Stack
 
 | Layer | Choice | Why |
