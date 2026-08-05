@@ -605,4 +605,83 @@ do $$ declare visible int; total int; begin
   end if;
 end $$;
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Administering the hub is not the same as being on a project
+--
+-- Ana is an admin. Luis owns project 2. A third teacher offers to help on it.
+-- Ana must not receive that offer, and must not be able to answer it — being
+-- able to moderate a project is not the same as being part of it.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';  -- approved earlier
+
+do $$ begin
+  perform public.offer_collaboration(
+    'aaaaaaaa-0000-0000-0000-000000000002', 'Puedo aportar desde Arte.', 'art@12');
+end $$;
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';  -- Ana, the admin
+
+do $$ declare n int; begin
+  select count(*) into n from public.collaboration_requests
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000002'
+     and status = 'interested';
+  if n = 0 then
+    raise notice 'PASS  admin does not see a pending offer on another teacher''s project';
+  else
+    raise notice 'FAIL  admin saw % pending offer(s) they are not party to', n;
+  end if;
+end $$;
+
+do $$ declare v_req uuid; begin
+  reset role;
+  select id into v_req from public.collaboration_requests
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000002' and status = 'interested';
+  set role authenticated;
+  set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+  begin
+    perform public.respond_to_collaboration(v_req, true);
+    raise notice 'FAIL  admin answered an offer on a project they do not lead';
+  exception when insufficient_privilege then
+    raise notice 'PASS  admin cannot answer an offer on a project they do not lead';
+  end;
+end $$;
+
+-- The owner must still be able to see and answer it.
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';  -- Luis, the owner
+
+do $$ declare n int; begin
+  select count(*) into n from public.collaboration_requests
+   where project_id = 'aaaaaaaa-0000-0000-0000-000000000002'
+     and status = 'interested';
+  if n = 1 then
+    raise notice 'PASS  the owner still receives the offer on their own project';
+  else
+    raise notice 'FAIL  owner saw % offers on their own project', n;
+  end if;
+end $$;
+
+-- And admin moderation of the project itself is untouched.
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+
+do $$ declare n int; begin
+  update public.projects set status = 'in_progress'
+   where id = 'aaaaaaaa-0000-0000-0000-000000000002';
+  get diagnostics n = row_count;
+  if n = 1 then
+    raise notice 'PASS  admin can still moderate any project';
+  else
+    raise notice 'FAIL  admin lost the ability to edit a project (% rows)', n;
+  end if;
+end $$;
+
 reset role;

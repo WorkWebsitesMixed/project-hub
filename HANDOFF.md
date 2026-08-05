@@ -40,8 +40,9 @@ someone's SQL editor.
 | `0006_respond_to_collaboration.sql` | Accept/decline, granting or withdrawing membership |
 | `0007_graph_grade_filter_and_email_prefs.sql` | Grade filter for the graph, email opt-out |
 | `0008_confirmed_collaborations.sql` | Confirmed-collaboration graph and the director's list |
+| `0009_collaboration_is_not_moderation.sql` | Stops admin rights leaking into collaboration offers |
 
-**36 checks passing** (`npm run db:test`, needs podman or docker). They cover
+**40 checks passing** (`npm run db:test`, needs podman or docker). They cover
 the things that would be expensive to get wrong: outside-domain sign-ins are
 rejected, a pending account reads nothing, self-approval is blocked, a teacher
 cannot edit a colleague's project, and one acceptance draws exactly one line on
@@ -122,8 +123,15 @@ applied: it needs to say that offers arrive in *Mi espacio* rather than by email
 and describe the two views of the connections map. Sending it after the subdomain
 question resolves avoids a follow-up correcting the link.
 
-**Only two teachers have accounts.** The collaboration flow has been exercised
-once end to end. The confirmed-collaborations view is nearly empty, which is
+**Admin rights used to leak into collaboration** (fixed in `0009`). `can_edit_project()`
+says yes to admins on everything, which is right for moderation but wrong for
+offers — it made the admin the recipient of every teacher's collaboration
+requests. Collaboration now uses `leads_project()`, which has no admin
+override, and the dashboard scopes its inbox explicitly rather than trusting
+RLS. If you add another feature around collaboration_requests, use
+`leads_project()`, not `can_edit_project()`.
+
+**A handful of teachers have accounts.** The announcement went out on 5 August. The confirmed-collaborations view is nearly empty, which is
 honest but not yet useful to a learning director.
 
 **Vercel ↔ GitHub is not connected.** Deploys are manual. `vercel git connect`

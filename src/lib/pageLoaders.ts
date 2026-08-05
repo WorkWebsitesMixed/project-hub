@@ -422,6 +422,20 @@ export async function loadDashboard(
     }
   }
 
+  // Scope the inbox to projects this teacher actually leads, explicitly rather
+  // than leaning on RLS. Two reasons: accepted requests are readable by every
+  // approved teacher (the connection graph needs that), so RLS alone would put
+  // other people's accepted collaborations in this list; and an admin can
+  // moderate every project, which once made them the recipient of everyone's
+  // offers.
+  const { data: led } = await supabase
+    .from("project_members")
+    .select("project_id")
+    .eq("user_id", profile.id)
+    .in("role", ["owner", "editor"]);
+
+  const ledProjectIds = (led ?? []).map((row) => row.project_id as string);
+
   const [{ data: myProjects }, { data: received }, { data: sent }] =
     await Promise.all([
       supabase
@@ -430,15 +444,17 @@ export async function loadDashboard(
         .eq("owner_id", profile.id)
         .order("updated_at", { ascending: false }),
 
-      // RLS policy `collab_select_project_side` is what scopes this to projects
-      // this teacher may edit; the .neq keeps their own offers out of the inbox.
-      supabase
-        .from("collaboration_requests")
-        .select(
-          "id, message, status, created_at, projects(id, title), profiles(full_name, email)",
-        )
-        .neq("user_id", profile.id)
-        .order("created_at", { ascending: false }),
+      // The .neq keeps this teacher's own offers out of their own inbox.
+      ledProjectIds.length > 0
+        ? supabase
+            .from("collaboration_requests")
+            .select(
+              "id, message, status, created_at, projects(id, title), profiles(full_name, email)",
+            )
+            .in("project_id", ledProjectIds)
+            .neq("user_id", profile.id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as unknown[] }),
 
       supabase
         .from("collaboration_requests")
