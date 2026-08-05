@@ -25,7 +25,7 @@ Connecting it is a small win nobody has needed yet.
 
 ## State of the database
 
-All eight migrations are applied. They are **idempotent** — safe to re-run in
+All nine migrations are applied. They are **idempotent** — safe to re-run in
 any order, and `npm run db:test` applies the whole set twice to prove it, so a
 migration that would fail on a second run fails the suite instead of failing in
 someone's SQL editor.
