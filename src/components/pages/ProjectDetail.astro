@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import { getLocaleFromUrl, useTranslations, localizePath, localized } from '../../i18n/utils';
 import { STATUS_LABELS, subjectBySlug, GRADES, subjectsForGrade } from '../../lib/subjects';
+import { formatSchedule } from '../../lib/terms';
 import type { ProjectDetailData } from '../../lib/pageLoaders';
 
 interface Props {
@@ -28,6 +29,11 @@ const {
 
 const locale = getLocaleFromUrl(Astro.url);
 const t = useTranslations(locale);
+
+// Null for a project nobody has scheduled — shown as "not scheduled yet"
+// rather than hidden, because an unknown date is itself worth knowing when you
+// are deciding whether to offer to join.
+const schedule = formatSchedule(project, locale, { withYear: true });
 
 const chips = tags.map((tag) => {
   const subject = subjectBySlug(tag.slug);
@@ -161,16 +167,19 @@ const crossChips = chips.filter((c) => c.role === 'cross');
         )
       }
 
-      {
-        project.duration && (
-          <section>
-            <h2 class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
-              {t('project.duration')}
-            </h2>
-            <p class="mt-1 text-sm text-ink">{project.duration}</p>
-          </section>
-        )
-      }
+      <section>
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-ink-muted">
+          {t('project.schedule')}
+        </h2>
+        <p class={`mt-1 text-sm ${schedule ? 'font-medium text-navy' : 'text-ink-muted'}`}>
+          {schedule ?? t('project.unscheduled')}
+        </p>
+        {
+          project.duration && (
+            <p class="mt-1 text-sm text-ink-muted">{project.duration}</p>
+          )
+        }
+      </section>
 
       {
         project.resources && (

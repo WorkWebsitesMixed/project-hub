@@ -10,6 +10,16 @@ import {
   type ProjectStatus,
 } from '../lib/subjects';
 import { LOCALES, type Locale } from '../i18n/ui';
+import {
+  TERMS,
+  TERM_LABELS,
+  academicYearLabel,
+  academicYearOptions,
+  currentAcademicYear,
+  isTerm,
+  weekOptions,
+  type Term,
+} from '../lib/terms';
 
 export interface ProjectFormValues {
   id?: string;
@@ -19,6 +29,10 @@ export interface ProjectFormValues {
   primarySubject: string | null;
   crossSubjects: string[];
   status: ProjectStatus;
+  academicYear: number;
+  term: Term | null;
+  weekStart: number | null;
+  weekEnd: number | null;
   duration: string;
   resources: string;
   language: Locale;
@@ -44,6 +58,10 @@ const EMPTY: ProjectFormValues = {
   primarySubject: null,
   crossSubjects: [],
   status: 'idea',
+  academicYear: currentAcademicYear(),
+  term: null,
+  weekStart: null,
+  weekEnd: null,
   duration: '',
   resources: '',
   language: 'en',
@@ -76,6 +94,35 @@ export default function ProjectForm({ locale, initial, labels, pickerLabels }: P
       })),
     );
   }, [values.grades, locale]);
+
+  const yearOptions = useMemo(() => academicYearOptions(), []);
+  const weeks = useMemo(() => weekOptions(values.term), [values.term]);
+
+  function setTerm(next: Term | null) {
+    setValues((v) => {
+      // Weeks mean nothing without a term, and the database enforces that.
+      if (next === null) return { ...v, term: null, weekStart: null, weekEnd: null };
+      // A week that does not exist in the new term would be rejected on save;
+      // pull it back to the last week that does.
+      const max = weekOptions(next).length;
+      const clamp = (w: number | null) => (w == null ? null : Math.min(w, max));
+      return { ...v, term: next, weekStart: clamp(v.weekStart), weekEnd: clamp(v.weekEnd) };
+    });
+  }
+
+  /**
+   * Moving one end of the range past the other drags the other with it, rather
+   * than showing an error for something the teacher plainly did not mean.
+   */
+  function setWeek(edge: 'weekStart' | 'weekEnd', week: number | null) {
+    setValues((v) => {
+      const next = { ...v, [edge]: week };
+      if (week == null) return next;
+      if (edge === 'weekStart' && v.weekEnd != null && v.weekEnd < week) next.weekEnd = week;
+      if (edge === 'weekEnd' && v.weekStart != null && v.weekStart > week) next.weekStart = week;
+      return next;
+    });
+  }
 
   function toggleGrade(grade: Grade) {
     setValues((v) => {
@@ -110,6 +157,10 @@ export default function ProjectForm({ locale, initial, labels, pickerLabels }: P
       p_title: values.title.trim(),
       p_description: values.description.trim(),
       p_status: values.status,
+      p_academic_year: values.academicYear,
+      p_term: values.term,
+      p_week_start: values.weekStart,
+      p_week_end: values.weekEnd,
       p_duration: values.duration.trim(),
       p_resources: values.resources.trim(),
       p_language: values.language,
@@ -267,6 +318,72 @@ export default function ProjectForm({ locale, initial, labels, pickerLabels }: P
           </select>
         </Field>
       </div>
+
+      {/*
+        Timing is the commonest reason two well-matched projects never happen.
+        Structured so it can be compared; the free-text note underneath holds
+        the nuance dropdowns cannot.
+      */}
+      <fieldset className="rounded-card border border-line p-4">
+        <legend className="px-1 text-sm font-semibold text-navy">{labels.schedule}</legend>
+        <p className="text-xs text-ink-muted">{labels.weeksHint}</p>
+
+        <div className="mt-4 grid gap-5 sm:grid-cols-2">
+          <Field label={labels.year}>
+            <select
+              value={values.academicYear}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, academicYear: Number(e.target.value) }))
+              }
+              className="w-full rounded-lg border border-line px-3 py-2 text-navy"
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {academicYearLabel(year)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label={labels.term}>
+            <select
+              value={values.term ?? ''}
+              onChange={(e) => setTerm(isTerm(e.target.value) ? e.target.value : null)}
+              className="w-full rounded-lg border border-line px-3 py-2 text-navy"
+            >
+              <option value="">{labels.termNone}</option>
+              {TERMS.map((term) => (
+                <option key={term} value={term}>
+                  {TERM_LABELS[term][locale]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <div className="mt-5 grid gap-5 sm:grid-cols-2">
+          {(['weekStart', 'weekEnd'] as const).map((edge) => (
+            <Field
+              key={edge}
+              label={edge === 'weekStart' ? labels.weekFrom : labels.weekTo}
+            >
+              <select
+                disabled={!values.term}
+                value={values[edge] ?? ''}
+                onChange={(e) => setWeek(edge, e.target.value ? Number(e.target.value) : null)}
+                className="w-full rounded-lg border border-line px-3 py-2 text-navy disabled:bg-surface-sunken disabled:text-ink-muted"
+              >
+                <option value="">{values.term ? '—' : labels.weekPickTerm}</option>
+                {weeks.map((week) => (
+                  <option key={week} value={week}>
+                    {week}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ))}
+        </div>
+      </fieldset>
 
       <Field label={labels.duration} hint={labels.durationHint}>
         <input

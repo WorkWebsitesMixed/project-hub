@@ -17,6 +17,7 @@ import type {
   SubjectConnection,
 } from "./database.types";
 import { SUBJECTS, type Grade, type ProjectStatus } from "./subjects";
+import { currentAcademicYear, isTerm, type Term } from "./terms";
 import type { Locale } from "../i18n/ui";
 import { localizePath } from "../i18n/utils";
 import { notifyCollaborationOffer, notifyCollaborationAnswer } from "./email";
@@ -50,6 +51,10 @@ export interface ProjectDetailData {
     title: string;
     description: string;
     status: ProjectStatus;
+    academic_year: number | null;
+    term: Term | null;
+    week_start: number | null;
+    week_end: number | null;
     duration: string;
     resources: string;
     language: Locale;
@@ -136,7 +141,7 @@ export async function loadProjectDetail(
   const { data: project } = await supabase
     .from("projects")
     .select(
-      `id, title, description, status, duration, resources, language, created_at, owner_id, ${OWNER_EMBED}`,
+      `id, title, description, status, duration, resources, language, academic_year, term, week_start, week_end, created_at, owner_id, ${OWNER_EMBED}`,
     )
     .eq("id", projectId)
     .maybeSingle();
@@ -217,6 +222,10 @@ export interface ProjectEditorData {
     title: string;
     description: string;
     status: ProjectStatus;
+    academicYear: number;
+    term: Term | null;
+    weekStart: number | null;
+    weekEnd: number | null;
     duration: string;
     resources: string;
     language: Locale;
@@ -237,7 +246,9 @@ export async function loadProjectEditor(
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, title, description, status, duration, resources, language")
+    .select(
+      "id, title, description, status, duration, resources, language, academic_year, term, week_start, week_end",
+    )
     .eq("id", projectId)
     .maybeSingle();
 
@@ -261,6 +272,12 @@ export async function loadProjectEditor(
       title: project.title,
       description: project.description,
       status: project.status as ProjectStatus,
+      // Projects posted before the schedule existed have no year on the row
+      // only if the backfill has not run; fall back rather than send NaN.
+      academicYear: project.academic_year ?? currentAcademicYear(),
+      term: isTerm(project.term) ? project.term : null,
+      weekStart: project.week_start,
+      weekEnd: project.week_end,
       duration: project.duration,
       resources: project.resources,
       language: project.language as Locale,

@@ -684,4 +684,137 @@ do $$ declare n int; begin
   end if;
 end $$;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0010 — the schedule
+--
+-- The point of these columns is that timings can be COMPARED. Anything that
+-- lets a project claim an impossible slot, or lose its year, breaks the one
+-- question the field exists to answer.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';  -- Luis
+
+do $$
+declare v_id uuid; y smallint; tm public.term_code; ws smallint; we smallint;
+begin
+  v_id := public.upsert_project(
+    p_title := 'Scheduled project', p_description := '', p_status := 'idea',
+    p_duration := '', p_resources := '', p_language := 'en',
+    p_grades := array[11]::smallint[], p_primary_subject := 'physics@11',
+    p_academic_year := 2026::smallint, p_term := 'T2',
+    p_week_start := 3::smallint, p_week_end := 6::smallint
+  );
+
+  select academic_year, term, week_start, week_end
+    into y, tm, ws, we
+  from public.projects where projects.id = v_id;
+
+  if (y, tm, ws, we) = (2026::smallint, 'T2'::public.term_code, 3::smallint, 6::smallint) then
+    raise notice 'PASS  schedule stored as given';
+  else
+    raise notice 'FAIL  schedule came back as %, %, %, %', y, tm, ws, we;
+  end if;
+end $$;
+
+do $$
+declare v_id uuid; ws smallint; we smallint;
+begin
+  -- Backwards range: the teacher meant weeks 4–9 either way.
+  v_id := public.upsert_project(
+    p_title := 'Backwards weeks', p_description := '', p_status := 'idea',
+    p_duration := '', p_resources := '', p_language := 'en',
+    p_grades := array[11]::smallint[], p_primary_subject := 'physics@11',
+    p_term := 'T1', p_week_start := 9::smallint, p_week_end := 4::smallint
+  );
+  select week_start, week_end into ws, we
+  from public.projects where projects.id = v_id;
+
+  if (ws, we) = (4::smallint, 9::smallint) then
+    raise notice 'PASS  a reversed week range is corrected, not rejected';
+  else
+    raise notice 'FAIL  reversed range stored as %–%', ws, we;
+  end if;
+end $$;
+
+do $$
+declare v_id uuid; tm public.term_code; ws smallint;
+begin
+  -- Weeks without a term are meaningless and must not survive.
+  v_id := public.upsert_project(
+    p_title := 'Weeks without a term', p_description := '', p_status := 'idea',
+    p_duration := '', p_resources := '', p_language := 'en',
+    p_grades := array[11]::smallint[], p_primary_subject := 'physics@11',
+    p_term := null, p_week_start := 3::smallint, p_week_end := 6::smallint
+  );
+  select term, week_start into tm, ws
+  from public.projects where projects.id = v_id;
+
+  if tm is null and ws is null then
+    raise notice 'PASS  weeks are dropped when no term is given';
+  else
+    raise notice 'FAIL  kept weeks (%) with term %', ws, tm;
+  end if;
+end $$;
+
+do $$
+declare v_id uuid; y smallint;
+begin
+  -- A project with no year stated still gets one, or next August the board
+  -- cannot tell this year's T1 from last year's.
+  v_id := public.upsert_project(
+    p_title := 'No year given', p_description := '', p_status := 'idea',
+    p_duration := '', p_resources := '', p_language := 'en',
+    p_grades := array[11]::smallint[], p_primary_subject := 'physics@11'
+  );
+  select academic_year into y from public.projects where projects.id = v_id;
+
+  if y is not null then
+    raise notice 'PASS  academic year defaults rather than staying null';
+  else
+    raise notice 'FAIL  project saved with no academic year';
+  end if;
+end $$;
+
+do $$ begin
+  begin
+    perform public.upsert_project(
+      p_title := 'Week 20', p_description := '', p_status := 'idea',
+      p_duration := '', p_resources := '', p_language := 'en',
+      p_grades := array[11]::smallint[], p_primary_subject := 'physics@11',
+      p_term := 'T1', p_week_start := 1::smallint, p_week_end := 20::smallint
+    );
+    raise notice 'FAIL  a week outside the term was accepted';
+  exception when check_violation then
+    raise notice 'PASS  a week outside 1-12 is rejected';
+  end;
+end $$;
+
+do $$
+declare n_t2 int; n_any int;
+begin
+  select count(*) into n_t2 from public.search_projects(p_terms := array['T2']::public.term_code[]);
+  select count(*) into n_any from public.search_projects();
+
+  -- Filtering by term must actually narrow, and must exclude the unscheduled.
+  if n_t2 > 0 and n_t2 < n_any then
+    raise notice 'PASS  search_projects filters by term';
+  else
+    raise notice 'FAIL  term filter returned % of % projects', n_t2, n_any;
+  end if;
+end $$;
+
+do $$
+declare n int;
+begin
+  select count(*) into n
+  from public.search_projects(p_academic_year := 1999::smallint);
+  if n = 0 then
+    raise notice 'PASS  search_projects filters by academic year';
+  else
+    raise notice 'FAIL  year filter matched % projects in 1999', n;
+  end if;
+end $$;
+
 reset role;

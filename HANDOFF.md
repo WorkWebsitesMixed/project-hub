@@ -1,8 +1,8 @@
 # Handoff — Project Hub
 
-**As of 5 August 2026.** Everything in the original roadmap is built, deployed
-and in use. Work is paused on one item only: email notifications, which are
-waiting on IT to create a mailbox.
+**As of 6 August 2026.** Everything in the original roadmap is built, deployed
+and in use, including email notifications. One thing remains unproven: that a
+notification actually leaves Vercel's runtime. See below.
 
 ---
 
@@ -41,6 +41,7 @@ someone's SQL editor.
 | `0007_graph_grade_filter_and_email_prefs.sql` | Grade filter for the graph, email opt-out |
 | `0008_confirmed_collaborations.sql` | Confirmed-collaboration graph and the director's list |
 | `0009_collaboration_is_not_moderation.sql` | Stops admin rights leaking into collaboration offers |
+| `0010_project_schedule.sql` | Academic year, term and week range on a project |
 
 **40 checks passing** (`npm run db:test`, needs podman or docker). They cover
 the things that would be expensive to get wrong: outside-domain sign-ins are
@@ -50,21 +51,35 @@ the confirmed graph rather than six.
 
 ---
 
-## The one blocked item: email
+## Email
 
-Everything is written and deployed. It is **inert** because no transport is
-configured, which is deliberate — with nothing set, every send returns quietly
-and the hub works in-app only.
+**Configured and deployed on 6 August 2026.** IT created
+`projecthub@marymount.edu.co`; an app password was generated on it and the five
+`SMTP_*` / `EMAIL_FROM` variables are set on Vercel across production, preview
+and development. `npm run email:test` sends successfully from a laptop.
 
-### What is waiting
+The app password lives **only** in `.env` (gitignored) and in Vercel's encrypted
+environment store, marked sensitive. It is not in the repository and must never
+be. If it leaks, revoke it at `myaccount.google.com/apppasswords` on the
+projecthub account — that invalidates it everywhere without touching the mailbox
+password.
 
-IT needs to create a dedicated mailbox, `projecthub@marymount.edu.co`, with
-2-Step Verification enabled so an app password can be generated. The request
-email is drafted (see the conversation; it also asks, separately and optionally,
-for a `proyectos.marymount.edu.co` subdomain).
+### Still unverified: outbound SMTP from Vercel
 
-**App passwords are confirmed to work on this Workspace** — tested on the admin's
-own account on 4 August.
+Sending works from a laptop. Whether it works from Vercel's Node runtime has not
+been observed, because the only two triggers are a real collaboration offer and
+a real answer to one — there is no test endpoint. The next offer made in
+production is the test.
+
+If nothing arrives, check `npx vercel logs <deployment-url>` for `[email] Could
+not send:`. The fallback is Resend, already implemented and selected
+automatically when no `SMTP_*` values are set — but it needs SPF and DKIM
+records added to a shared school DNS record, which is why it is plan B.
+
+Note that a failure here is quiet by design: the collaboration request commits
+before mail is attempted, so an SMTP problem never turns a successful click into
+an error page. That is correct behaviour and also why it must be checked
+deliberately rather than assumed.
 
 ### Why a school mailbox rather than an outside provider
 
@@ -79,37 +94,48 @@ authorises Google, GoDaddy, Mailchimp and Zoho. An error editing it does not
 break the hub, it breaks the whole school's mail. That is the argument, not a
 technical limit.
 
-### Steps to finish, once the mailbox exists
+### If the app password ever has to be regenerated
 
-1. Generate a 16-character app password on `projecthub@marymount.edu.co`.
-2. Prove it locally first — the password never leaves the machine:
-   ```bash
-   # in .env
-   SMTP_HOST="smtp.gmail.com"
-   SMTP_PORT="587"
-   SMTP_USER="projecthub@marymount.edu.co"
-   SMTP_PASS="sixteencharsnospaces"
-   EMAIL_FROM="Project Hub <projecthub@marymount.edu.co>"
+```bash
+# 1. put the new 16 characters, spaces removed, in .env
+npm run email:test -- andres.forero@marymount.edu.co
 
-   npm run email:test -- andres.forero@marymount.edu.co
-   ```
-   The script names the three failures that matter: rejected credentials, an
-   unreachable relay, and a bad sender address. The most common is pasting the
-   app password with its spaces still in.
-3. Add the same five variables to Vercel (production, preview, development) and
-   redeploy.
-4. **Verify in production.** This is the one genuine unknown: whether Vercel's
-   runtime permits outbound SMTP. It should — the Vercel adapter uses the Node
-   runtime, not Edge — but it has not been tested, and it should not be assumed.
-   If it fails, the fallback is Resend, which is already implemented and selected
-   automatically when no `SMTP_*` values are set.
-5. Tell the staff. The announcement sent on 5 August says notifications do not
-   exist yet and asks teachers to check *Mi espacio*; that needs a short
-   follow-up once mail is flowing.
+# 2. push it to all three environments
+for e in production preview development; do
+  printf '%s' 'newpassword' | npx vercel env add SMTP_PASS "$e" --force
+done
+npx vercel deploy --prod --yes
+```
+
+The script names the three failures worth distinguishing: rejected credentials,
+an unreachable relay, and a bad sender address. The most common by far is
+pasting the app password with its spaces still in.
+
+Two traps found the first time round. A duplicate `SMTP_PASS` line lower in
+`.env` silently wins — the loader takes the last assignment. And the app
+password page returns "esta opción no está disponible para tu cuenta" when
+2-Step Verification is not yet on for that account, which reads like a policy
+block but is not.
+
+### Still to tell the staff
+
+The announcement sent on 5 August says notifications do not exist yet and asks
+teachers to check *Mi espacio*. Once a real notification has been seen arriving
+in production, that needs a short follow-up.
 
 ---
 
 ## Open items, in rough priority order
+
+**Term lengths are assumed, not verified.** `WEEKS_PER_TERM` in
+`src/lib/terms.ts` says twelve weeks for all three terms. Nobody checked that
+against the school calendar. If T3 is shorter, the form currently offers weeks
+that do not exist. One constant, one line to fix.
+
+**Projects posted before 6 August have no term.** The backfill gave them an
+academic year derived from when they were posted, but deliberately left the term
+null rather than guessing — a wrong term on the board is worse than an honest
+"sin programar". Their owners can set it by editing the project.
 
 **One collaboration has no subject recorded.** David Felipe Hincapié Calle
 offered on the LaTeX project before migration 0008 added that field, so his
@@ -120,8 +146,9 @@ a "Cambiar mi aporte" control. He is the only person affected; every offer since
 requires the subject at the form.
 
 **Iván Darío Arango has an unanswered offer** from Verónica Correa on his
-JUSTICIA SOCIAL project, and no email notification exists to tell him. Worth a
-message. The same applies to anyone who posts before email is switched on.
+JUSTICIA SOCIAL project. It was made before email was switched on, so no
+notification was ever sent and he has no way of knowing. Nothing will resend it
+— write to him. The same applies to any offer made before 6 August.
 
 **Admin rights used to leak into collaboration** (fixed in `0009`). `can_edit_project()`
 says yes to admins on everything, which is right for moderation but wrong for
@@ -167,6 +194,15 @@ one with the other would cost the hub its discovery function.
 and the subject the partner declared when offering. Deriving it from tags instead
 would turn one acceptance into six connections nobody agreed to.
 
+**A project runs in exactly one term.** Confirmed with the staff: nothing spans
+a term boundary. If that ever changes it needs an `end_term` column, *not* a
+reinterpretation of `week_end` — a week range that silently wraps into the next
+term would be unqueryable.
+
+**The free-text duration was kept as a note, not replaced.** Teachers wrote real
+constraints in it ("depende de cuándo esté libre el laboratorio") that dropdowns
+cannot hold. The structured fields are for comparing; the note is for reading.
+
 **The partner's subject is recorded on the offer, not the profile.** A teacher
 who takes both Chemistry and Physics knows which applies to *this* project, and a
 profile field would go stale the next time a timetable changed.
@@ -203,7 +239,7 @@ npm run dev               # http://localhost:4321
 | Command | Does |
 | --- | --- |
 | `npm run check` | Astro + TypeScript diagnostics — currently 0 errors |
-| `npm run db:test` | Applies every migration twice to a disposable Postgres, runs 36 checks |
+| `npm run db:test` | Applies every migration twice to a disposable Postgres, runs 40 checks |
 | `npm run seed:generate` | Rebuilds the subject seed from `src/lib/subjects.ts` |
 | `npm run email:test -- <addr>` | Sends one real email through the configured SMTP account |
 

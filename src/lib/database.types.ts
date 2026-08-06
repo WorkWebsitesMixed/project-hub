@@ -7,6 +7,7 @@
  */
 
 import type { Grade, ProjectStatus } from './subjects';
+import type { Term } from './terms';
 import type { Locale } from '../i18n/ui';
 
 export type ProfileStatus = 'pending' | 'approved' | 'rejected';
@@ -47,6 +48,11 @@ export interface ProjectSearchRow {
   duration: string;
   resources: string;
   language: Locale;
+  /** Calendar year the academic year starts in: 2026 means 2026–2027. */
+  academic_year: number | null;
+  term: Term | null;
+  week_start: number | null;
+  week_end: number | null;
   owner_id: string;
   owner_name: string | null;
   owner_email: string | null;
@@ -68,6 +74,8 @@ export interface SearchProjectsArgs {
   p_match_all?: boolean;
   p_limit?: number;
   p_offset?: number;
+  p_terms?: Term[] | null;
+  p_academic_year?: number | null;
 }
 
 export interface SubjectConnection {

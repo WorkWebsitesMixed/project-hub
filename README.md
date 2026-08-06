@@ -117,6 +117,9 @@ fails the test suite instead of failing in production.
 | `0005_upsert_project.sql` | Atomic project write across three tables |
 | `0006_respond_to_collaboration.sql` | Accept/decline, granting or withdrawing membership |
 | `0007_graph_grade_filter_and_email_prefs.sql` | Grade filtering for the graph, email opt-out column |
+| `0008_confirmed_collaborations.sql` | Confirmed-collaboration graph and the joint-projects list |
+| `0009_collaboration_is_not_moderation.sql` | Keeps admin rights out of collaboration offers |
+| `0010_project_schedule.sql` | Academic year, term and week range on a project |
 
 `npm run db:test` spins up a disposable Postgres (podman or docker), applies
 every migration and runs `supabase/tests/`, which asserts the things that would
@@ -137,6 +140,23 @@ src/
   styles/global.css   Brand tokens, subject-family accents, contrast notes
 supabase/migrations/  Schema and RLS policies
 ```
+
+## When a project runs
+
+A project records an **academic year, a term and a week range** — `T2 · weeks
+3–6` — rather than free-text duration. Timing is the commonest reason two
+well-matched projects never happen, and prose cannot be compared. The old free
+text survives as an optional note for the nuance dropdowns cannot hold.
+
+The calendar lives in `src/lib/terms.ts`: three terms, twelve weeks each, and a
+year that begins in August so `2026` means *2026–2027*. **The twelve is an
+assumption** — nobody has checked it against the published school calendar. If a
+term is shorter, change `WEEKS_PER_TERM` and the form stops offering weeks that
+do not exist; the database only enforces a flat 1–12 ceiling.
+
+Term is optional, because "Idea" is a valid status and an idea has no dates.
+Those projects read as *not scheduled yet*, and a term filter excludes them
+deliberately — "what runs in T2" is a question about scheduled work.
 
 ## Subject catalog
 
