@@ -12,11 +12,11 @@ export const TERMS = ['T1', 'T2', 'T3'] as const;
 export type Term = (typeof TERMS)[number];
 
 /**
- * How many teaching weeks each term has.
+ * How many teaching weeks each term has. Confirmed with the school, 6 Aug 2026.
  *
- * ⚠ ASSUMPTION — 12 across the board, not yet checked against the published
- * school calendar. If T3 is shorter, change it here and the form stops offering
- * weeks that do not exist. Nothing else needs touching.
+ * If a term length ever changes, change it here: the form stops offering weeks
+ * that do not exist and no migration is needed, because the database only
+ * enforces a flat 1–12 ceiling.
  */
 export const WEEKS_PER_TERM: Record<Term, number> = {
   T1: 12,

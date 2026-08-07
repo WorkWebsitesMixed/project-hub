@@ -149,10 +149,10 @@ well-matched projects never happen, and prose cannot be compared. The old free
 text survives as an optional note for the nuance dropdowns cannot hold.
 
 The calendar lives in `src/lib/terms.ts`: three terms, twelve weeks each, and a
-year that begins in August so `2026` means *2026–2027*. **The twelve is an
-assumption** — nobody has checked it against the published school calendar. If a
-term is shorter, change `WEEKS_PER_TERM` and the form stops offering weeks that
-do not exist; the database only enforces a flat 1–12 ceiling.
+year that begins in August so `2026` means *2026–2027*. Confirmed against how
+the school actually runs. If a term length ever changes, change
+`WEEKS_PER_TERM` — the form stops offering weeks that do not exist and no
+migration is needed, because the database only enforces a flat 1–12 ceiling.
 
 Term is optional, because "Idea" is a valid status and an idea has no dates.
 Those projects read as *not scheduled yet*, and a term filter excludes them

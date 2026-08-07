@@ -1,8 +1,12 @@
 # Handoff — Project Hub
 
 **As of 6 August 2026.** Everything in the original roadmap is built, deployed
-and in use, including email notifications. One thing remains unproven: that a
-notification actually leaves Vercel's runtime. See below.
+and in use, plus email notifications and a structured project schedule. Fourteen
+teachers have accounts.
+
+Two things are outstanding and neither is code: nobody has yet watched a
+notification leave Vercel's runtime, and Iván does not know he has an offer
+waiting. Both are below.
 
 ---
 
@@ -25,7 +29,7 @@ Connecting it is a small win nobody has needed yet.
 
 ## State of the database
 
-All nine migrations are applied. They are **idempotent** — safe to re-run in
+All ten migrations are applied. They are **idempotent** — safe to re-run in
 any order, and `npm run db:test` applies the whole set twice to prove it, so a
 migration that would fail on a second run fails the suite instead of failing in
 someone's SQL editor.
@@ -43,11 +47,12 @@ someone's SQL editor.
 | `0009_collaboration_is_not_moderation.sql` | Stops admin rights leaking into collaboration offers |
 | `0010_project_schedule.sql` | Academic year, term and week range on a project |
 
-**40 checks passing** (`npm run db:test`, needs podman or docker). They cover
+**47 checks passing** (`npm run db:test`, needs podman or docker). They cover
 the things that would be expensive to get wrong: outside-domain sign-ins are
 rejected, a pending account reads nothing, self-approval is blocked, a teacher
-cannot edit a colleague's project, and one acceptance draws exactly one line on
-the confirmed graph rather than six.
+cannot edit a colleague's project, one acceptance draws exactly one line on the
+confirmed graph rather than six, and a project cannot claim a week that does not
+exist.
 
 ---
 
@@ -119,23 +124,24 @@ block but is not.
 
 ### Still to tell the staff
 
-The announcement sent on 5 August says notifications do not exist yet and asks
-teachers to check *Mi espacio*. Once a real notification has been seen arriving
-in production, that needs a short follow-up.
+The 5 August announcement says notifications do not exist yet and asks teachers
+to check *Mi espacio*. The 6 August reply to the group says they are "casi
+listas". Once a real notification has been seen arriving in production, say so
+in one line — several people are checking *Mi espacio* by hand on the strength
+of that first message.
 
 ---
 
 ## Open items, in rough priority order
 
-**Term lengths are assumed, not verified.** `WEEKS_PER_TERM` in
-`src/lib/terms.ts` says twelve weeks for all three terms. Nobody checked that
-against the school calendar. If T3 is shorter, the form currently offers weeks
-that do not exist. One constant, one line to fix.
+**The four projects posted before 6 August have no term.** The backfill gave
+them an academic year derived from when they were posted, but deliberately left
+the term null rather than guessing — a wrong term on the board is worse than an
+honest "sin programar". Their owners set it by editing the project; Andrés said
+in the 6 August reply that he would write to each of them.
 
-**Projects posted before 6 August have no term.** The backfill gave them an
-academic year derived from when they were posted, but deliberately left the term
-null rather than guessing — a wrong term on the board is worse than an honest
-"sin programar". Their owners can set it by editing the project.
+Everyone who posts from now on simply sees the current form and will never know
+there was another one.
 
 **One collaboration has no subject recorded.** David Felipe Hincapié Calle
 offered on the LaTeX project before migration 0008 added that field, so his
@@ -158,9 +164,12 @@ override, and the dashboard scopes its inbox explicitly rather than trusting
 RLS. If you add another feature around collaboration_requests, use
 `leads_project()`, not `can_edit_project()`.
 
-**A handful of teachers have accounts.** The announcement went out on 5 August
-and projects are arriving. The confirmed-collaborations view is still nearly
-empty — honest, but not yet useful to a learning director.
+**Fourteen accounts, four projects.** The announcement went out on 5 August;
+Nerida Matulick replied to the whole staff setting a deadline of **21 August**
+for everyone to post one project. Adoption is the real open question — the
+confirmed-collaborations view is still nearly empty, which is honest but not yet
+useful to a learning director. If the 21st passes and the board is still thin,
+that is a people problem, not a software one.
 
 **Vercel ↔ GitHub is not connected.** Deploys are manual. `vercel git connect`
 fails because the Vercel GitHub App is not authorised on the org.
@@ -239,7 +248,7 @@ npm run dev               # http://localhost:4321
 | Command | Does |
 | --- | --- |
 | `npm run check` | Astro + TypeScript diagnostics — currently 0 errors |
-| `npm run db:test` | Applies every migration twice to a disposable Postgres, runs 40 checks |
+| `npm run db:test` | Applies every migration twice to a disposable Postgres, runs 47 checks |
 | `npm run seed:generate` | Rebuilds the subject seed from `src/lib/subjects.ts` |
 | `npm run email:test -- <addr>` | Sends one real email through the configured SMTP account |
 
